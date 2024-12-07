@@ -30,6 +30,7 @@ from .tensor_functions import (
     Sigmoid,
     Sum,
     View,
+    Max,
     # tensor,
 )
 
@@ -751,12 +752,13 @@ class Tensor:
             Tensor: The mean of elements.
 
         """
-        total = self.sum(dim)
+        # total = self.sum(dim)
         if dim is None:
-            count = self.size
+            return self.sum() / self.size
         else:
-            count = self.shape[dim]
-        return total / count
+            # count = self.shape[dim]
+            return self.sum(dim) / self.shape[dim]
+        # return total / count
 
     def permute(self, *order: int) -> Tensor:
         """Permute the dimensions of the tensor according to a given order.
@@ -792,3 +794,40 @@ class Tensor:
     def zero_grad_(self) -> None:
         """Set the gradients of the tensor to zero."""
         self.grad = None
+
+    def repeat(self, repeats: Tuple[int, ...]) -> Tensor:
+        """Repeat the tensor along specified dimensions.
+
+        Args:
+            repeats (Tuple[int, ...]): Number of repetitions along each dimension.
+
+        Returns:
+            Tensor: The repeated tensor.
+
+        """
+        if len(repeats) != len(self.shape):
+            raise ValueError(f"Repeats {repeats} must match tensor dimensions {self.shape}.")
+
+        # Use NumPy's tile function to repeat the storage
+        new_storage = np.tile(self._tensor._storage.reshape(self.shape), repeats).flatten()
+        new_shape = tuple([s * r for s, r in zip(self.shape, repeats)])
+
+        return Tensor.make(storage=new_storage.tolist(), shape=new_shape, backend= self.backend)
+
+    def max(self, dim: Optional[int] = None) -> Tensor:
+        """Compute the max of the tensor elements over a given dimension.
+
+        Args:
+            dim (Optional[int]): The dimension to reduce over. If None, computes the max over all dimensions.
+
+        Returns:
+            Tensor: The max of elements.
+
+        """
+        if dim is None:
+            # Max over all dimensions
+            dim_tensor = Tensor.make([-1], shape=(1,), backend=self.backend)
+            return Max.apply(self, dim_tensor)
+        else:
+            dim_tensor = Tensor.make([dim], shape=(1,), backend=self.backend)
+            return Max.apply(self, dim_tensor)

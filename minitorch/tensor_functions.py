@@ -482,7 +482,75 @@ class LT(Function):
         grad_t2 = grad_output.zeros()
         return grad_t1, grad_t2
 
+class Max(Function):
+    """Max function over tensor elements."""
 
+    @staticmethod
+    def forward(ctx: Context, t1: Tensor, dim: Tensor) -> Tensor:
+        """Forward pass for max.
+
+        Args:
+            ctx (Context): The context to save information for backward computation.
+            t1 (Tensor): The input tensor.
+            dim (Tensor): The dimension to reduce over.
+
+        Returns:
+            Tensor: The max values along the specified dimension.
+
+        """
+        dim_int = int(dim.item())
+        input_array = t1.to_numpy()  # Correct accessor
+
+        # Compute max values and indices
+        max_vals = np.max(input_array, axis=dim_int, keepdims=True)
+        mask = (input_array == max_vals).astype(float)
+
+        # Count number of maxima per slice
+        num_max = np.sum(mask, axis=dim_int, keepdims=True)
+
+        # Save mask and num_max for backward
+        mask_tensor = Tensor.make(mask.flatten(), shape=t1.shape, backend=t1.backend)
+        num_max_tensor = Tensor.make(num_max.flatten(), shape=max_vals.shape, backend=t1.backend)
+        ctx.save_for_backward(mask_tensor, num_max_tensor, dim_int)
+
+        # Compute output max values
+        max_vals = np.squeeze(max_vals, axis = dim_int)
+        max_vals_tensor = Tensor.make(max_vals.flatten(), shape=tuple(max_vals.shape), backend=t1.backend)
+        return max_vals_tensor
+
+    @staticmethod
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        """Backward pass for max.
+
+        Args:
+            ctx (Context): The context with saved tensors.
+            grad_output (Tensor): The gradient of the output tensor.
+
+        Returns:
+            Tuple[Tensor, None]: The gradient with respect to the input tensor and None for dim.
+
+        """
+        mask_tensor, num_max_tensor, dim_int = ctx.saved_tensors
+        mask = mask_tensor.to_numpy()
+        num_max = num_max_tensor.to_numpy()
+        grad_output_array = grad_output.to_numpy()
+
+        # Broadcast grad_output to match mask shape
+        grad_output_broadcast = np.expand_dims(grad_output_array, axis=dim_int)
+        # Assign gradient equally to all maxima
+        grad_input_array = mask * (grad_output_broadcast / num_max)
+
+        # Flatten grad_input_array for Tensor.make
+        grad_input_flat = grad_input_array.flatten()
+
+        # Create a Tensor for grad_input
+        grad_input = Tensor.make(
+            grad_input_flat,
+            shape=tuple(grad_input_array.shape),
+            backend=grad_output.backend
+        )
+        return grad_input, -1
+    
 class EQ(Function):
     """Element-wise equality comparison."""
 
@@ -840,3 +908,27 @@ but was expecting derivative %f from central difference.
             1e-2,
             err_msg=err_msg % (f, vals, x.grad[ind], i, ind, check),
         )
+
+        # # Determine if the current index is a maximum in its slice
+        # dim = 2  # Adjust this if testing different dimensions
+        # slice_indices = list(ind[:dim]) + [slice(None)]
+        # slice_vals = x.to_numpy()[tuple(slice_indices)]
+        # max_val = np.max(slice_vals)
+        # num_max = np.sum(slice_vals == max_val)
+        # is_max = x[ind] == max_val
+        
+        # # If the index is a maximum, expected gradient is 1.0 / num_max
+        # # Otherwise, expected gradient is 0.0
+        # expected_grad = (1.0 / num_max) if is_max else 0.0
+        
+        # # Get received gradient from backward pass
+        # received_grad = x.grad[ind]
+        
+        # # Compare gradients
+        # np.testing.assert_allclose(
+        #     received_grad,
+        #     expected_grad,
+        #     rtol=1e-2,
+        #     atol=1e-2,
+        #     err_msg=err_msg % (f, vals, received_grad, i, ind, expected_grad),
+        # )

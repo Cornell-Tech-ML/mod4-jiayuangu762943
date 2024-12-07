@@ -3,8 +3,6 @@ from typing import Tuple, TypeVar, Any
 from numba import prange
 from numba import njit as _njit
 
-import numpy as np
-
 from .autodiff import Context
 from .tensor import Tensor
 from .tensor_data import (
@@ -229,47 +227,62 @@ def _tensor_conv2d(
 
     """
     # TODO: Implement for Task 4.2.
-    batch_out, out_channels, out_height, out_width = out_shape
-    batch_in, in_channels, height, width = input_shape
-    out_channels_wt, in_channels_wt, kh, kw = weight_shape
+    batch_size, out_channels, out_height, out_width = out_shape
+    batch_size_in, in_channels, in_height, in_width = input_shape
+    out_channels_wt, in_channels_wt, kernel_height, kernel_width = weight_shape
 
     assert (
-        batch_in == batch_out
+        batch_size == batch_size_in
         and in_channels == in_channels_wt
         and out_channels == out_channels_wt
     )
 
-    s1 = input_strides
-    s2 = weight_strides
-    s10, s11, s12, s13 = s1[0], s1[1], s1[2], s1[3]
-    s20, s21, s22, s23 = s2[0], s2[1], s2[2], s2[3]
+    s0, s1, s2, s3 = input_strides  # Input strides
+    w0, w1, w2, w3 = weight_strides  # Weight strides
+    o0, o1, o2, o3 = out_strides  # Output strides
 
-    for out_pos in prange(out_size):
-        out_index = np.empty(4, dtype=np.int32)
-        to_index(out_pos, out_shape, out_index)
-        b, oc, h, w = out_index
+    for b in prange(batch_size):
+        for oc in range(out_channels):
+            for h_out in range(out_height):
+                for w_out in range(out_width):
+                    tmp = 0.0
+                    for ic in range(in_channels):
+                        for kh in range(kernel_height):
+                            for kw in range(kernel_width):
+                                if reverse:
+                                    h_in = h_out - kh
+                                    w_in = w_out - kw
+                                    weight_kh = kh
+                                    weight_kw = kw
+                                else:
+                                    h_in = h_out + kh
+                                    w_in = w_out + kw
+                                    weight_kh = kh
+                                    weight_kw = kw
 
-        tmp = 0.0
-        for ic in range(in_channels):
-            for k_h in range(kh):
-                for k_w in range(kw):
-                    if not reverse:
-                        h_in = h - (kh - 1 - k_h)
-                        w_in = w - (kw - 1 - k_w)
-                    else:
-                        h_in = h + k_h - kh // 2
-                        w_in = w + k_w - kw // 2
+                                # Check if indices are within input bounds
+                                if 0 <= h_in < in_height and 0 <= w_in < in_width:
+                                    input_idx = (
+                                        b * s0 +
+                                        ic * s1 +
+                                        h_in * s2 +
+                                        w_in * s3
+                                    )
+                                    weight_idx = (
+                                        oc * w0 +
+                                        ic * w1 +
+                                        weight_kh * w2 +
+                                        weight_kw * w3
+                                    )
+                                    tmp += input[input_idx] * weight[weight_idx]
 
-                    if 0 <= h_in < height and 0 <= w_in < width:
-                        input_pos = (
-                            b * s10 + ic * s11 + h_in * s12 + w_in * s13
-                        )
-                        weight_pos = (
-                            oc * s20 + ic * s21 + k_h * s22 + k_w * s23
-                        )
-                        tmp += input[input_pos] * weight[weight_pos]
-        out_idx = index_to_position(out_index, out_strides)
-        out[out_idx] = tmp
+                    out_idx = (
+                        b * o0 +
+                        oc * o1 +
+                        h_out * o2 +
+                        w_out * o3
+                    )
+                    out[out_idx] = tmp
 
 tensor_conv2d = njit(_tensor_conv2d, parallel=True, fastmath=True)
 
