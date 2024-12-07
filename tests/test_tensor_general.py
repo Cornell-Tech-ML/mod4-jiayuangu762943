@@ -1,11 +1,11 @@
 import random
 from typing import Callable, Dict, Iterable, List, Tuple
 
-import numba
-import numba.cuda
-import pytest
-from hypothesis import given, settings
-from hypothesis.strategies import DataObject, data, integers, lists, permutations
+import numba  # type: ignore
+import numba.cuda  # type: ignore
+import pytest  # type: ignore
+from hypothesis import given, settings  # type: ignore
+from hypothesis.strategies import DataObject, data, integers, lists, permutations  # type: ignore
 
 import minitorch
 from minitorch import MathTestVariable, Tensor, TensorBackend, grad_check
@@ -46,7 +46,7 @@ if numba.cuda.is_available():
 @pytest.mark.parametrize("backend", backend_tests)
 def test_create(backend: str, t1: List[float]) -> None:
     """Create different tensors."""
-    t2 = minitorch.tensor(t1, backend=shared[backend])
+    t2 = minitorch.tensor(t1, backend=shared[backend])  # type: ignore
     for i in range(len(t1)):
         assert t1[i] == t2[i]
 
@@ -61,7 +61,7 @@ def test_one_args(
     data: DataObject,
 ) -> None:
     """Run forward for all one arg functions above."""
-    t1 = data.draw(tensors(backend=shared[backend]))
+    t1 = data.draw(tensors(backend=shared[backend]))  # type: ignore
     name, base_fn, tensor_fn = fn
     t2 = tensor_fn(t1)
     for ind in t2._tensor.indices():
@@ -78,7 +78,7 @@ def test_two_args(
     data: DataObject,
 ) -> None:
     """Run forward for all two arg functions above."""
-    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))
+    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))  # type: ignore
     name, base_fn, tensor_fn = fn
     t3 = tensor_fn(t1, t2)
     for ind in t3._tensor.indices():
@@ -94,7 +94,7 @@ def test_one_derivative(
     data: DataObject,
 ) -> None:
     """Run backward for all one arg functions above."""
-    t1 = data.draw(tensors(backend=shared[backend]))
+    t1 = data.draw(tensors(backend=shared[backend]))  # type: ignore
     name, _, tensor_fn = fn
     grad_check(tensor_fn, t1)
 
@@ -109,7 +109,7 @@ def test_two_grad(
     data: DataObject,
 ) -> None:
     """Run backward for all two arg functions above."""
-    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))
+    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))  # type: ignore
     name, _, tensor_fn = fn
     grad_check(tensor_fn, t1, t2)
 
@@ -124,7 +124,7 @@ def test_reduce(
     data: DataObject,
 ) -> None:
     """Run backward for all reduce functions above."""
-    t1 = data.draw(tensors(backend=shared[backend]))
+    t1 = data.draw(tensors(backend=shared[backend]))  # type: ignore
     name, _, tensor_fn = fn
     grad_check(tensor_fn, t1)
 
@@ -134,54 +134,54 @@ if numba.cuda.is_available():
     @pytest.mark.task3_3
     def test_sum_practice() -> None:
         x = [random.random() for i in range(16)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum()[0]
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = minitorch.sum_practice(b2)
         assert_close(s, out._storage[0])
 
     @pytest.mark.task3_3
     def test_sum_practice2() -> None:
         x = [random.random() for i in range(64)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum()[0]
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = minitorch.sum_practice(b2)
         assert_close(s, out._storage[0] + out._storage[1])
 
     @pytest.mark.task3_3
     def test_sum_practice3() -> None:
         x = [random.random() for i in range(48)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum()[0]
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = minitorch.sum_practice(b2)
         assert_close(s, out._storage[0] + out._storage[1])
 
     @pytest.mark.task3_3
     def test_sum_practice4() -> None:
         x = [random.random() for i in range(32)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum()[0]
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = b2.sum(0)
         assert_close(s, out[0])
 
     @pytest.mark.task3_3
     def test_sum_practice5() -> None:
         x = [random.random() for i in range(500)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum()[0]
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = b2.sum(0)
         assert_close(s, out[0])
 
     @pytest.mark.task3_3
     def test_sum_practice_other_dims() -> None:
         x = [[random.random() for i in range(32)] for j in range(16)]
-        b = minitorch.tensor(x)
+        b = minitorch.tensor(x)  # type: ignore
         s = b.sum(1)
-        b2 = minitorch.tensor(x, backend=shared["cuda"])
+        b2 = minitorch.tensor(x, backend=shared["cuda"])  # type: ignore
         out = b2.sum(1)
         for i in range(16):
             assert_close(s[i, 0], out[i, 0])
@@ -190,12 +190,12 @@ if numba.cuda.is_available():
     def test_mul_practice1() -> None:
         x1 = [[random.random() for i in range(2)] for j in range(2)]
         y1 = [[random.random() for i in range(2)] for j in range(2)]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
-        )
+        )  # type: ignore
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = minitorch.mm_practice(x, y)
         for i in range(2):
             for j in range(2):
@@ -205,12 +205,12 @@ if numba.cuda.is_available():
     def test_mul_practice2() -> None:
         x1 = [[random.random() for i in range(32)] for j in range(32)]
         y1 = [[random.random() for i in range(32)] for j in range(32)]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
-        )
+        )  # type: ignore
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = minitorch.mm_practice(x, y)
         for i in range(32):
             for j in range(32):
@@ -221,12 +221,12 @@ if numba.cuda.is_available():
         """Small real example"""
         x1 = [[random.random() for i in range(2)] for j in range(2)]
         y1 = [[random.random() for i in range(2)] for j in range(2)]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
         )
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = x @ y
 
         for i in range(2):
@@ -239,12 +239,12 @@ if numba.cuda.is_available():
         size = 33
         x1 = [[random.random() for i in range(size)] for j in range(size)]
         y1 = [[random.random() for i in range(size)] for j in range(size)]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
-        )
+        )  # type: ignore
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = x @ y
 
         for i in range(size):
@@ -263,12 +263,12 @@ if numba.cuda.is_available():
             [[random.random() for i in range(size)] for j in range(size)]
             for _ in range(2)
         ]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
-        )
+        )  # type: ignore
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = x @ y
 
         for b in range(2):
@@ -290,12 +290,12 @@ if numba.cuda.is_available():
             [[random.random() for i in range(size_b)] for j in range(size_in)]
             for _ in range(2)
         ]
-        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(
+        z = minitorch.tensor(x1, backend=shared["fast"]) @ minitorch.tensor(  # type: ignore
             y1, backend=shared["fast"]
         )
 
-        x = minitorch.tensor(x1, backend=shared["cuda"])
-        y = minitorch.tensor(y1, backend=shared["cuda"])
+        x = minitorch.tensor(x1, backend=shared["cuda"])  # type: ignore
+        y = minitorch.tensor(y1, backend=shared["cuda"])  # type: ignore
         z2 = x @ y
 
         for b in range(2):
@@ -306,7 +306,8 @@ if numba.cuda.is_available():
 
 
 @given(data())
-@settings(max_examples=25)
+# TODO 25->26
+@settings(max_examples=26)
 @pytest.mark.parametrize("fn", two_arg)
 @pytest.mark.parametrize("backend", backend_tests)
 def test_two_grad_broadcast(
@@ -315,7 +316,7 @@ def test_two_grad_broadcast(
     data: DataObject,
 ) -> None:
     """Run backward for all two arg functions above with broadcast."""
-    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))
+    t1, t2 = data.draw(shaped_tensors(2, backend=shared[backend]))  # type: ignore
     name, base_fn, tensor_fn = fn
 
     grad_check(tensor_fn, t1, t2)
@@ -330,7 +331,7 @@ def test_two_grad_broadcast(
 @pytest.mark.parametrize("backend", backend_tests)
 def test_permute(backend: str, data: DataObject) -> None:
     """Check permutations for all backends."""
-    t1 = data.draw(tensors(backend=shared[backend]))
+    t1 = data.draw(tensors(backend=shared[backend]))  # type: ignore
     permutation = data.draw(permutations(range(len(t1.shape))))
 
     def permute(a: Tensor) -> Tensor:
@@ -368,8 +369,8 @@ def test_bmm(backend: str, data: DataObject) -> None:
         data.draw(small_ints),
         data.draw(small_ints),
     )
-    a = data.draw(tensors(backend=shared[backend], shape=(D, A, B)))
-    b = data.draw(tensors(backend=shared[backend], shape=(1, B, C)))
+    a = data.draw(tensors(backend=shared[backend], shape=(D, A, B)))  # type: ignore
+    b = data.draw(tensors(backend=shared[backend], shape=(1, B, C)))  # type: ignore
 
     c = a @ b
     c2 = (

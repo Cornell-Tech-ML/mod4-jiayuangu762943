@@ -4,6 +4,8 @@ import embeddings
 
 import minitorch
 from datasets import load_dataset
+import numpy as np
+
 
 BACKEND = minitorch.TensorBackend(minitorch.FastOps)
 
@@ -32,10 +34,50 @@ class Conv1d(minitorch.Module):
         super().__init__()
         self.weights = RParam(out_channels, in_channels, kernel_width)
         self.bias = RParam(1, out_channels, 1)
+        self.kernel_width =  kernel_width
+        self.out_channels = out_channels
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        batch_size, in_channels, in_length = input.shape
+        out_channels = self.out_channels
+        kernel_width = self.kernel_width
+
+        # Calculate output length
+        out_length = in_length - kernel_width + 1
+        if out_length <= 0:
+            raise ValueError(
+                f"Kernel width {kernel_width} is too large for input length {in_length}."
+            )
+
+        # Initialize output tensor with zeros
+        out = input.zeros(
+            (batch_size, out_channels, out_length))
+        
+        input_array = input.to_numpy()
+        weights_array = self.weights.value.to_numpy()
+        # Perform convolution
+        for b in range(batch_size):
+            for oc in range(out_channels):
+                for pos in range(out_length):
+                    # Extract the current window for convolution
+                    
+
+                    window = input_array[b, :, pos : pos + kernel_width]  # Shape: (in_channels, kernel_width)
+                    
+                    # Extract the corresponding weights
+                    kernel = weights_array[oc, :, :]  # Shape: (in_channels, kernel_width)
+                    
+                    # Element-wise multiplication and sum
+                    conv_sum = (window * kernel).sum()
+                    
+                    # Add bias
+                    conv_sum += self.bias.value[0, oc, 0]
+                    
+                    # Assign to output
+                    out[b, oc, pos] = conv_sum
+
+        return out
 
 
 class CNNSentimentKim(minitorch.Module):
@@ -62,14 +104,59 @@ class CNNSentimentKim(minitorch.Module):
         super().__init__()
         self.feature_map_size = feature_map_size
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.filter_sizes = filter_sizes
+        self.dropout_rate = dropout
 
-    def forward(self, embeddings):
+        # Initialize Conv1d layers for each filter size
+        self.convs = [
+            Conv1d(in_channels=embedding_size, out_channels=feature_map_size, kernel_width=fs)
+            for fs in filter_sizes
+        ]
+
+        # Linear layer: input features = feature_map_size * number of filter sizes
+        # Output features = 1 (for binary classification)
+        self.linear = Linear(in_size=feature_map_size * len(filter_sizes), out_size=1)
+
+
+    def forward(self, embeddings, train: bool):
         """
         embeddings tensor: [batch x sentence length x embedding dim]
         """
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        batch_size, sentence_length, embedding_dim = embeddings.shape
+
+        # Reshape embeddings to (batch_size, embedding_dim, sentence_length) for Conv1d
+        embeddings_reshaped = embeddings.view(batch_size, embedding_dim, sentence_length)
+
+        # Apply each Conv1d layer, followed by ReLU and Max-over-time pooling
+        pooled_outputs = []
+        for conv in self.convs:
+            conv_out = conv.forward(embeddings_reshaped)  # Shape: (batch, feature_map_size, out_length)
+            relu_out = conv_out.relu()  # Apply ReLU activation
+            # Max-over-time pooling: take the maximum value across the temporal dimension
+            pooled = minitorch.nn.max(relu_out,dim=2)  # Shape: (batch, feature_map_size)
+            pooled_outputs.append(pooled)
+
+        # Concatenate all pooled feature maps: Shape -> (batch, feature_map_size * len(filter_sizes))
+        concatenated = concatenate(pooled_outputs, axis=1)  # Implemented below
+
+        # Apply Linear layer: Shape -> (batch, 1)
+        linear_out = self.linear.forward(concatenated)
+
+        # Apply ReLU activation
+        relu_linear = linear_out.relu()
+
+        # Apply Dropout
+        if (train):
+            dropped = minitorch.dropout(relu_linear, p=self.dropout_rate)
+        else:
+            dropped = minitorch.dropout(relu_linear, p=0.0)
+
+
+        # Apply Sigmoid activation for binary classification
+        sigmoid_out = dropped.sigmoid()
+
+        return sigmoid_out
 
 
 # Evaluation helper methods
@@ -153,7 +240,7 @@ class SentenceSentimentTrain:
                 x.requires_grad_(True)
                 y.requires_grad_(True)
                 # Forward
-                out = model.forward(x)
+                out = model.forward(x, train= True)
                 prob = (out * y) + (out - 1.0) * (y - 1.0)
                 loss = -(prob.log() / y.shape[0]).sum()
                 loss.view(1).backward()
@@ -178,7 +265,7 @@ class SentenceSentimentTrain:
                     X_val,
                     backend=BACKEND,
                 )
-                out = model.forward(x)
+                out = model.forward(x, train = False)
                 validation_predictions += get_predictions_array(y, out)
                 validation_accuracy.append(get_accuracy(validation_predictions))
                 model.train()
@@ -250,6 +337,55 @@ def encode_sentiment_data(dataset, pretrained_embeddings, N_train, N_val=0):
     print(f"missing pre-trained embedding for {len(unks)} unknown words")
 
     return (X_train, y_train), (X_val, y_val)
+
+def load_glove_embeddings(path="project/data/glove.6B/glove.6B.50d.txt"):
+    """Load GloVe embeddings from local file.
+    
+    Args:
+    ----
+        path: Path to the GloVe embeddings file
+        
+    Returns:
+    -------
+        dict: Word to embedding mapping
+    """
+    word2emb = {}
+    with open(path, 'r', encoding='utf-8') as f:
+        for line in f:
+            values = line.split()
+            word = values[0]
+            vector = [float(x) for x in values[1:]]
+            word2emb[word] = vector
+    return word2emb
+
+def concatenate(tensors, axis=1):
+    """
+    Concatenate a list of tensors along the specified axis.
+
+    Args:
+        tensors (list of Tensor): List of tensors to concatenate.
+        axis (int): Axis along which to concatenate.
+
+    Returns:
+        Tensor: Concatenated tensor.
+    """
+    if not tensors:
+        raise ValueError("No tensors to concatenate.")
+
+    # Convert all tensors to NumPy arrays
+    np_arrays = [t.to_numpy() for t in tensors]
+
+    # Use NumPy to concatenate along the specified axis
+    concatenated_np = np.concatenate(np_arrays, axis=axis)
+
+    # Create a new Tensor from the concatenated NumPy array
+    concatenated_tensor = minitorch.Tensor.make(
+        concatenated_np.flatten(),
+        shape=concatenated_np.shape,
+        backend=tensors[0].backend
+    )
+
+    return concatenated_tensor
 
 
 if __name__ == "__main__":
