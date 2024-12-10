@@ -35,16 +35,22 @@ def conv2d_test(  # noqa: D103
     """Generates a callable function for performing 2D convolution using CUDA.
 
     Args:
+    ----
         cuda (Any): The CUDA runtime object (e.g., from Numba).
 
     Returns:
+    -------
         Callable: A CUDA kernel function for 2D convolution.
 
     """
-    def call(out: np.ndarray, a: np.ndarray, b: np.ndarray, H: int, W: int, Kh: int, Kw: int) -> None:
+
+    def call(
+        out: np.ndarray, a: np.ndarray, b: np.ndarray, H: int, W: int, Kh: int, Kw: int
+    ) -> None:
         """CUDA kernel for 2D convolution.
 
         Args:
+        ----
             out (np.ndarray): Output array for the result of the convolution.
             a (np.ndarray): Input array to be convolved.
             b (np.ndarray): Kernel array.
@@ -141,7 +147,7 @@ problem.check()
 
 # 1d conv
 def conv_spec(a: np.ndarray, b: np.ndarray) -> np.ndarray:  # noqa: ANN001, ANN201, D103
-    out = np.zeros(*a.shape)
+    out = np.zeros(a.shape)
     len = b.shape[0]
     for i in range(a.shape[0]):
         out[i] = sum([a[i + j] * b[j] for j in range(len) if i + j < a.shape[0]])
@@ -159,13 +165,29 @@ def conv_test(
     """Generates a callable function for performing 1D convolution using CUDA.
 
     Args:
+    ----
         cuda (Any): The CUDA runtime object (e.g., from Numba).
 
     Returns:
+    -------
         Callable: A CUDA kernel function for 1D convolution.
 
     """
-    def call(out, a, b, a_size, b_size) -> None:  # noqa: ANN001
+
+    def call(
+        out: np.ndarray, a: np.ndarray, b: np.ndarray, a_size: int, b_size: int
+    ) -> None:
+        """CUDA kernel for 1D convolution.
+
+        Args:
+        ----
+            out (np.ndarray): Output array for the result of the convolution.
+            a (np.ndarray): Input array to be convolved.
+            b (np.ndarray): Kernel array.
+            a_size (int): Size of the input array.
+            b_size (int): Size of the kernel.
+
+        """
         i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
         local_i = cuda.threadIdx.x
 
