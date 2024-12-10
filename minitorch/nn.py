@@ -2,7 +2,7 @@ from typing import Optional, Tuple
 from .tensor import Tensor
 from .tensor_functions import Function
 from .autodiff import Context
-import numpy as np
+import numpy as np # type: ignore
 # List of functions in this file:
 # - avgpool2d: Tiled average pooling 2D
 # - argmax: Compute the argmax as a 1-hot tensor
@@ -32,7 +32,7 @@ def tile(input: Tensor, kernel: Tuple[int, int]) -> Tuple[Tensor, int, int]:
     assert height % kh == 0
     assert width % kw == 0
     # TODO: Implement for Task 4.3.
-    
+
     # Calculate new dimensions after tiling
     new_height = height // kh
     new_width = width // kw
@@ -51,19 +51,23 @@ class AvgPool2dFun(Function):
         """Compute 2D average pooling on a tensor.
 
         Args:
+        ----
             ctx (Context): Context for storing saved tensors.
             input (Tensor): Input tensor of shape (batch, channel, height, width).
             kernel (Tensor): Tensor containing (kernel_height, kernel_width).
 
         Returns:
+        -------
             Tensor: Pooled tensor of shape (batch, channel, new_height, new_width).
 
         """
         kh, kw = int(kernel._tensor._storage[0]), int(kernel._tensor._storage[1])
         tiled, new_height, new_width = tile(input, (kh, kw))
         # Compute mean along the last dimension
-        pooled = tiled.mean(dim=len(tiled.shape)-1)
-        pooled = pooled.view(pooled.shape[0],pooled.shape[1],pooled.shape[2],pooled.shape[3])
+        pooled = tiled.mean(dim=len(tiled.shape) - 1)
+        pooled = pooled.view(
+            pooled.shape[0], pooled.shape[1], pooled.shape[2], pooled.shape[3]
+        )
         # Save for backward
         ctx.save_for_backward(tiled, kernel)
         return pooled
@@ -73,10 +77,12 @@ class AvgPool2dFun(Function):
         """Backward pass for 2D average pooling.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors.
             grad_output (Tensor): Gradient of the loss with respect to the output tensor.
 
         Returns:
+        -------
             Tuple[Tensor, None]: Gradient with respect to the input tensor and None for kernel (no gradient needed).
 
         """
@@ -85,30 +91,45 @@ class AvgPool2dFun(Function):
         batch, channel, new_height, new_width = grad_output.shape
 
         # Expand grad_output to match the tiled shape by adding two singleton dimensions
-        grad_output_expanded = grad_output.view(batch, channel, new_height, new_width, 1, 1)
+        grad_output_expanded = grad_output.view(
+            batch, channel, new_height, new_width, 1, 1
+        )
 
         # Distribute the gradient equally to each element in the pooling window
         # Shape after repeat: (batch, channel, new_height, new_width, kh, kw)
-        grad_input_tiled = (grad_output_expanded / (kh * kw)).repeat((1, 1, 1, 1, kh, kw))
-        
+        grad_input_tiled = (grad_output_expanded / (kh * kw)).repeat(
+            (1, 1, 1, 1, kh, kw)
+        )
+
         # Permute and reshape to match the input tensor's shape (batch, channel, height, width)
-        grad_input = grad_input_tiled.permute(0, 1, 2, 4, 3, 5).contiguous().view(batch, channel, new_height * kh, new_width * kw)
-        
+        grad_input = (
+            grad_input_tiled.permute(0, 1, 2, 4, 3, 5)
+            .contiguous()
+            .view(batch, channel, new_height * kh, new_width * kw)
+        )
+
         return grad_input, -1
+
 
 def avgpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     """Compute 2D average pooling on a tensor.
 
     Args:
+    ----
         input (Tensor): Input tensor of shape (batch, channel, height, width).
         kernel (Tuple[int, int]): Tuple specifying the (kernel_height, kernel_width).
 
     Returns:
+    -------
         Tensor: Pooled tensor of shape (batch, channel, new_height, new_width).
 
     """
-    assert len(input.shape) == 4, f"Input tensor must be 4D, but got shape {input.shape}"
-    kernel_tensor = Tensor.make([kernel[0], kernel[1]], shape=(2,), backend=input.backend)
+    assert (
+        len(input.shape) == 4
+    ), f"Input tensor must be 4D, but got shape {input.shape}"
+    kernel_tensor = Tensor.make(
+        [kernel[0], kernel[1]], shape=(2,), backend=input.backend
+    )
     return AvgPool2dFun.apply(input, kernel_tensor)
 
 
@@ -120,11 +141,13 @@ class Max(Function):
         """Forward pass for max.
 
         Args:
+        ----
             ctx (Context): The context to save information for backward computation.
             t1 (Tensor): The input tensor.
             dim (Tensor): The dimension to reduce over.
 
         Returns:
+        -------
             Tensor: The max values along the specified dimension.
 
         """
@@ -133,19 +156,29 @@ class Max(Function):
 
         # Compute max values and indices
         max_vals = np.max(input_array, axis=dim_int, keepdims=True)
-        mask = (input_array == max_vals).astype(float)
+        mask = (input_array == max_vals).astype(np.sfloat64)
 
         # Count number of maxima per slice
         num_max = np.sum(mask, axis=dim_int, keepdims=True)
 
         # Save mask and num_max for backward
-        mask_tensor = Tensor.make(mask.flatten(), shape=t1.shape, backend=t1.backend)
-        num_max_tensor = Tensor.make(num_max.flatten(), shape=max_vals.shape, backend=t1.backend)
+        mask_tensor = Tensor.make(
+            mask.astype(np.float64).flatten(), shape=t1.shape, backend=t1.backend
+        )
+        num_max_tensor = Tensor.make(
+            num_max.astype(np.float64).flatten(),
+            shape=max_vals.shape,
+            backend=t1.backend,
+        )
         ctx.save_for_backward(mask_tensor, num_max_tensor, dim_int)
 
         # Compute output max values
-        max_vals = np.squeeze(max_vals, axis = dim_int)
-        max_vals_tensor = Tensor.make(max_vals.flatten(), shape=tuple(max_vals.shape), backend=t1.backend)
+        max_vals = np.squeeze(max_vals, axis=dim_int)
+        max_vals_tensor = Tensor.make(
+            max_vals.astype(np.float64).flatten(),
+            shape=tuple(max_vals.shape),
+            backend=t1.backend,
+        )
         return max_vals_tensor
 
     @staticmethod
@@ -153,10 +186,12 @@ class Max(Function):
         """Backward pass for max.
 
         Args:
+        ----
             ctx (Context): The context with saved tensors.
             grad_output (Tensor): The gradient of the output tensor.
 
         Returns:
+        -------
             Tuple[Tensor, None]: The gradient with respect to the input tensor and None for dim.
 
         """
@@ -171,29 +206,33 @@ class Max(Function):
         grad_input_array = mask * (grad_output_broadcast / num_max)
 
         # Flatten grad_input_array for Tensor.make
-        grad_input_flat = grad_input_array.flatten()
+        grad_input_flat = grad_input_array.astype(np.float64).flatten()
 
         # Create a Tensor for grad_input
         grad_input = Tensor.make(
             grad_input_flat,
             shape=tuple(grad_input_array.shape),
-            backend=grad_output.backend
+            backend=grad_output.backend,
         )
         return grad_input, -1
-    
+
+
 def max(input: Tensor, dim: int) -> Tensor:
     """Compute the max of input along the specified dimension.
 
     Args:
+    ----
         input (Tensor): Input tensor.
         dim (int): Dimension along which to compute the max.
 
     Returns:
+    -------
         Tensor: Tensor containing the maximum values along the specified dimension.
 
     """
     dim_tensor = Tensor.make([dim], shape=(1,), backend=input.backend)
     return Max.apply(input, dim_tensor)
+
 
 class Softmax(Function):
     @staticmethod
@@ -201,11 +240,13 @@ class Softmax(Function):
         """Forward pass for the Softmax function.
 
         Args:
+        ----
             ctx (Context): Context to save intermediate values for backward computation.
             input (Tensor): Input tensor.
             dim_tensor (Tensor): Tensor containing the dimension along which to apply Softmax.
 
         Returns:
+        -------
             Tensor: Tensor containing the Softmax results.
 
         """
@@ -225,17 +266,23 @@ class Softmax(Function):
         # Save softmax_array and dimension for backward
         ctx.save_for_backward(softmax_array, dim)
 
-        return Tensor.make(softmax_array.flatten(), shape=input.shape, backend=input.backend)
+        return Tensor.make(
+            softmax_array.astype(np.float64).flatten(),
+            shape=input.shape,
+            backend=input.backend,
+        )
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
         """Backward pass for the Softmax function.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors from the forward pass.
             grad_output (Tensor): Gradient of the loss with respect to the output.
 
         Returns:
+        -------
             Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
 
         """
@@ -243,20 +290,30 @@ class Softmax(Function):
         grad_output_array = grad_output.to_numpy()
 
         # Compute grad_input
-        grad_input_array = softmax_array * (grad_output_array - np.sum(grad_output_array * softmax_array, axis=dim, keepdims=True))
+        grad_input_array = softmax_array * (
+            grad_output_array
+            - np.sum(grad_output_array * softmax_array, axis=dim, keepdims=True)
+        )
 
-        grad_input = Tensor.make(grad_input_array.flatten(), shape=grad_output.shape, backend=grad_output.backend)
+        grad_input = Tensor.make(
+            grad_input_array.astype(np.float64).flatten(),
+            shape=grad_output.shape,
+            backend=grad_output.backend,
+        )
 
         return grad_input, -1
-    
+
+
 def softmax(input: Tensor, dim: int) -> Tensor:
     """Functional API for the Softmax function.
 
     Args:
+    ----
         input (Tensor): Input tensor.
         dim (int): Dimension along which to apply Softmax.
 
     Returns:
+    -------
         Tensor: Tensor containing the Softmax results.
 
     """
@@ -270,11 +327,13 @@ class LogSoftmax(Function):
         """Forward pass for the LogSoftmax function.
 
         Args:
+        ----
             ctx (Context): Context to save intermediate values for backward computation.
             input (Tensor): Input tensor.
             dim_tensor (Tensor): Tensor containing the dimension along which to apply LogSoftmax.
 
         Returns:
+        -------
             Tensor: Tensor containing the LogSoftmax results.
 
         """
@@ -305,15 +364,18 @@ class LogSoftmax(Function):
         ctx.save_for_backward(softmax, dim)
 
         return log_softmax
+
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
         """Backward pass for the LogSoftmax function.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors from the forward pass.
             grad_output (Tensor): Gradient of the loss with respect to the output.
 
         Returns:
+        -------
             Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
 
         """
@@ -323,27 +385,31 @@ class LogSoftmax(Function):
         sum_grad = grad_output.sum(dim_int)  # Shape: same as sum_exp
 
         # Step 2: Compute softmax_sum_grad = softmax * sum_grad
-        softmax_sum_grad = softmax.f.mul_zip(softmax, sum_grad)  # Element-wise multiplication
+        softmax_sum_grad = softmax.f.mul_zip(
+            softmax, sum_grad
+        )  # Element-wise multiplication
 
         # Step 3: Compute grad_input = grad_output - softmax_sum_grad
         grad_input = grad_output - softmax_sum_grad  # Element-wise subtraction
 
         return grad_input, -1
 
+
 def logsoftmax(input: Tensor, dim: int) -> Tensor:
     """Functional API for the LogSoftmax function.
 
     Args:
+    ----
         input (Tensor): Input tensor.
         dim (int): Dimension along which to apply LogSoftmax.
 
     Returns:
+    -------
         Tensor: Tensor containing the LogSoftmax results.
 
     """
     dim_tensor = Tensor.make([dim], shape=(1,), backend=input.backend)
     return LogSoftmax.apply(input, dim_tensor)
-
 
 
 class MaxPool2dFun(Function):
@@ -352,11 +418,13 @@ class MaxPool2dFun(Function):
         """Forward pass for 2D Max Pooling.
 
         Args:
+        ----
             ctx (Context): Context to save intermediate values for backward computation.
             input (Tensor): Input tensor with shape (batch, channels, height, width).
             kernel (Tensor): Tensor specifying the kernel size (kh, kw).
 
         Returns:
+        -------
             Tensor: Tensor containing the results of max pooling.
 
         """
@@ -369,38 +437,52 @@ class MaxPool2dFun(Function):
         new_width = width // kw
 
         # Step 1: Reshape input to (batch, channels, new_height, kh, new_width, kw)
-        reshaped = input.contiguous().view(batch, channels, new_height, kh, new_width, kw)
+        reshaped = input.contiguous().view(
+            batch, channels, new_height, kh, new_width, kw
+        )
 
         # Step 2: Permute to (batch, channels, new_height, new_width, kh, kw)
         permuted = reshaped.permute(0, 1, 2, 4, 3, 5)
 
         # Step 3: Reshape to (batch, channels, new_height, new_width, kh * kw)
-        tiled = permuted.contiguous().view(batch, channels, new_height, new_width, kh * kw)
+        tiled = permuted.contiguous().view(
+            batch, channels, new_height, new_width, kh * kw
+        )
 
         # Step 4: Compute max along the last dimension (kh * kw)
-        max_tensor = tiled.f.max_reduce(tiled, len(tiled.shape) - 1)  # Shape: (batch, channels, new_height, new_width)
-        
+        max_tensor = tiled.f.max_reduce(
+            tiled, len(tiled.shape) - 1
+        )  # Shape: (batch, channels, new_height, new_width)
+
         # Step 5: Create mask where tiled == max_tensor (broadcasted)
-        mask = tiled.f.eq_zip(tiled, max_tensor)     # Shape: (batch, channels, new_height, new_width, kh * kw)
-        
+        mask = tiled.f.eq_zip(
+            tiled, max_tensor
+        )  # Shape: (batch, channels, new_height, new_width, kh * kw)
 
         # Step 6: Count number of maxima per pooling window
-        num_max = mask.sum(len(mask.shape)-1)       # Shape: (batch, channels, new_height, new_width)
+        num_max = mask.sum(
+            len(mask.shape) - 1
+        )  # Shape: (batch, channels, new_height, new_width)
 
         # Step 7: Save mask and num_max for backward pass
         ctx.save_for_backward(mask, num_max, kh, kw)
-        
-        max_tensor = max_tensor.contiguous().view(batch, channels, new_height, new_width)
+
+        max_tensor = max_tensor.contiguous().view(
+            batch, channels, new_height, new_width
+        )
         return max_tensor
+
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
         """Backward pass for 2D Max Pooling.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors from the forward pass.
             grad_output (Tensor): Gradient of the loss with respect to the output.
 
         Returns:
+        -------
             Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
 
         """
@@ -409,35 +491,62 @@ class MaxPool2dFun(Function):
         # num_max shape: (batch, channels, new_height, new_width)
 
         # Step 1: Compute 1 / num_max
-        inv_num_max = num_max.f.inv_map(num_max)  # Shape: (batch, channels, new_height, new_width)
-        
-        inv_num_max = inv_num_max.contiguous().view(inv_num_max.shape[0],inv_num_max.shape[1],inv_num_max.shape[2], inv_num_max.shape[3])
-        # Step 2: Scale grad_output by 1 / num_max
-        grad_scaled = grad_output.f.mul_zip(grad_output, inv_num_max)  # Shape: (batch, channels, new_height, new_width)
+        inv_num_max = num_max.f.inv_map(
+            num_max
+        )  # Shape: (batch, channels, new_height, new_width)
 
-        grad_scaled = grad_scaled.contiguous().view(grad_scaled.shape[0], grad_scaled.shape[1], grad_scaled.shape[2], grad_scaled.shape[3], 1)
+        inv_num_max = inv_num_max.contiguous().view(
+            inv_num_max.shape[0],
+            inv_num_max.shape[1],
+            inv_num_max.shape[2],
+            inv_num_max.shape[3],
+        )
+        # Step 2: Scale grad_output by 1 / num_max
+        grad_scaled = grad_output.f.mul_zip(
+            grad_output, inv_num_max
+        )  # Shape: (batch, channels, new_height, new_width)
+
+        grad_scaled = grad_scaled.contiguous().view(
+            grad_scaled.shape[0],
+            grad_scaled.shape[1],
+            grad_scaled.shape[2],
+            grad_scaled.shape[3],
+            1,
+        )
         # Step 3: Multiply grad_scaled with mask
-        grad_input_tiled = mask.f.mul_zip(mask, grad_scaled)  # Shape: (batch, channels, new_height, new_width, kh * kw)
+        grad_input_tiled = mask.f.mul_zip(
+            mask, grad_scaled
+        )  # Shape: (batch, channels, new_height, new_width, kh * kw)
 
         # Step 4: Reshape grad_input_tiled back to (batch, channels, height, width)
-        grad_input = grad_input_tiled.contiguous().view(mask.shape[0], mask.shape[1], mask.shape[2] * kh, mask.shape[3] * kw)
+        grad_input = grad_input_tiled.contiguous().view(
+            mask.shape[0], mask.shape[1], mask.shape[2] * kh, mask.shape[3] * kw
+        )
 
         return grad_input, -1
+
 
 def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     """Compute 2D max pooling on a tensor.
 
     Args:
+    ----
         input (Tensor): Input tensor of shape (batch, channel, height, width).
         kernel (Tuple[int, int]): Tuple specifying the (kernel_height, kernel_width).
 
     Returns:
+    -------
         Tensor: Pooled tensor of shape (batch, channel, new_height, new_width).
 
     """
-    assert len(input.shape) == 4, f"Input tensor must be 4D, but got shape {input.shape}"
-    kernel_tensor = Tensor.make([kernel[0], kernel[1]], shape=(2,), backend=input.backend)
+    assert (
+        len(input.shape) == 4
+    ), f"Input tensor must be 4D, but got shape {input.shape}"
+    kernel_tensor = Tensor.make(
+        [kernel[0], kernel[1]], shape=(2,), backend=input.backend
+    )
     return MaxPool2dFun.apply(input, kernel_tensor)
+
 
 class Dropout(Function):
     @staticmethod
@@ -445,37 +554,30 @@ class Dropout(Function):
         """Apply dropout to the input tensor.
 
         Args:
+        ----
             ctx (Context): Context to save information for backward computation.
             input (Tensor): Input tensor.
             p (Tensor): Probability of an element to be zeroed.
             train (bool): Whether in training mode.
 
         Returns:
+        -------
             Tensor: Tensor after applying dropout.
 
         """
         p = p_tensor.item()  # Keep p as float
         # Generate mask with shape as tuple
-        mask_array = (np.random.rand(*input.shape) > p).astype(np.float32).flatten()
-        mask = Tensor.make(
-            mask_array,
-            shape=tuple(input.shape),
-            backend=input.backend
-        )
+        mask_array = (np.random.rand(*input.shape) > p).astype(np.float64).flatten()
+        mask = Tensor.make(mask_array, shape=tuple(input.shape), backend=input.backend)
         # Scale the output
         if p == 1.0:
             # Use np.zeros with shape as tuple
-            zeros = np.zeros(input.shape).astype(np.float32).flatten()
-            return Tensor.make(
-                zeros,
-                shape=tuple(input.shape),
-                backend=input.backend
-            )
-
+            zeros = np.zeros(input.shape).astype(np.float64).flatten()
+            return Tensor.make(zeros, shape=tuple(input.shape), backend=input.backend)
 
         # Compute output
         output = input * mask / (1.0 - p)
-        ctx.save_for_backward(mask, p)        
+        ctx.save_for_backward(mask, p)
         return output
 
     @staticmethod
@@ -483,10 +585,12 @@ class Dropout(Function):
         """Backward pass for dropout.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors.
             grad_output (Tensor): Gradient of the loss with respect to the output tensor.
 
         Returns:
+        -------
             Tuple[Tensor, None, None]: Gradient with respect to the input tensor, None for p, and None for train.
 
         """
@@ -494,15 +598,18 @@ class Dropout(Function):
         grad_input = grad_output * mask / (1.0 - p)
         return grad_input, -1
 
+
 def dropout(input: Tensor, p: float, ignore: Optional[bool] = None) -> Tensor:  # noqa: D417
     """Apply dropout to the input tensor.
 
     Args:
+    ----
         input (Tensor): Input tensor.
         p (float): Probability of an element to be zeroed.
         train (bool): Whether in training mode.
 
     Returns:
+    -------
         Tensor: Tensor after applying dropout.
 
     """
