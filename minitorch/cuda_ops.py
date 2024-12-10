@@ -320,14 +320,13 @@ def _sum_practice(out: Storage, a: Storage, size: int) -> None:
         cuda.syncthreads()
     else:
         cache[pos] = 0.0
-    
 
     if i < size:
-        for j in [1,2,4,8,16]:
-            if pos% (j*2) == 0:
-                cache[pos] += cache[pos+j]
+        for j in [1, 2, 4, 8, 16]:
+            if pos % (j * 2) == 0:
+                cache[pos] += cache[pos + j]
                 cuda.syncthreads()
-        
+
         if pos == 0:
             out[cuda.blockIdx.x] = cache[0]
 
@@ -406,7 +405,7 @@ def tensor_reduce(
                 while 2**x < BLOCK_DIM:
                     j = 2**x
                     if pos % (j * 2) == 0:
-                        cache[pos] = fn(cache[pos], cache[pos+j])
+                        cache[pos] = fn(cache[pos], cache[pos + j])
                         cuda.syncthreads()
                     x += 1
 
@@ -472,6 +471,7 @@ def _mm_practice(out: Storage, a: Storage, b: Storage, size: int) -> None:
     for k in range(size):
         temp += sA[row, k] * sB[k, col]
     out[row * size + col] = temp
+
 
 jit_mm_practice = jit(_mm_practice)
 
@@ -571,7 +571,6 @@ def _tensor_matrix_multiply(
 
     if i < out_shape[1] and j < out_shape[2]:
         out[out_strides[0] * batch + out_strides[1] * i + out_strides[2] * j] = accum
-        
 
 
 tensor_matrix_multiply = jit(_tensor_matrix_multiply)
