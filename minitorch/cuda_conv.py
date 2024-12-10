@@ -1,188 +1,199 @@
-# type: ignore
-# Currently pyright doesn't support numba.cuda
+import numba # type: ignore
+import numpy as np # type: ignore
+from lib import CudaProblem, Coord # type: ignore
 
-from typing import TypeVar, Any
+def conv2d_spec(a, b):
+    H, W = a.shape
+    Kh, Kw = b.shape
+    out = np.zeros_like(a, dtype=np.float32)
+    for i in range(H):
+        for j in range(W):
+            s = 0.0
+            for p in range(Kh):
+                for q in range(Kw):
+                    if i + p < H and j + q < W:
+                        s += a[i + p, j + q] * b[p, q]
+            out[i, j] = s
+    return out
 
-import numba
-from numba import cuda
-from numba.cuda import jit as _jit
-from .tensor import Tensor
-from .tensor_data import (
-    MAX_DIMS,
-    Shape,
-    Storage,
-    Strides,
-    broadcast_index,
-    index_to_position,
-    to_index,
-)
-from .tensor_ops import TensorOps
+# Parameters
+TPB = 4
+Kh, Kw = 3, 3   # Example kernel size
+MAX_CONV_H = Kh - 1
+MAX_CONV_W = Kw - 1
 
-FakeCUDAKernel = Any
+H_TPB = TPB + MAX_CONV_H
+W_TPB = TPB + MAX_CONV_W
 
-Fn = TypeVar("Fn")
+def conv2d_test(cuda):
+    def call(out, a, b, H, W, Kh, Kw) -> None:
+        # Shared memory size accommodates the tile plus the kernel extension
+        a_shared = cuda.shared.array((H_TPB, W_TPB), numba.float32)
 
-def device_jit(fn: Fn, **kwargs) -> Fn:  # noqa: ANN003
-    return _jit(device=True, **kwargs)(fn)  # type: ignore
+        # Global indexing
+        i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+        j = cuda.blockIdx.y * cuda.blockDim.y + cuda.threadIdx.y
+        li = cuda.threadIdx.x
+        lj = cuda.threadIdx.y
 
-def jit(fn, **kwargs) -> FakeCUDAKernel:  # noqa: ANN001, ANN003
-    return _jit(**kwargs)(fn)  # type: ignore
+        # Load main tile
+        if i < H and j < W:
+            a_shared[li, lj] = a[i, j]
+        else:
+            a_shared[li, lj] = 0.0
 
-to_index = device_jit(to_index)
-index_to_position = device_jit(index_to_position)
-broadcast_index = device_jit(broadcast_index)
-
-THREADS_PER_BLOCK = 32
-
-class CudaOps(TensorOps):
-    cuda = True
-
-    @staticmethod
-    def conv1d(input: Tensor, weight: Tensor, reverse: bool = False) -> Tensor:
-        # input: (batch, in_channels, width)
-        # weight: (out_channels, in_channels, kernel_width)
-        batch, in_channels, in_width = input.shape
-        out_channels, in_channels_wt, kernel_width = weight.shape
-        assert in_channels == in_channels_wt
-        out_width = in_width
-
-        out = input.zeros((batch, out_channels, out_width))
-        threadsperblock = THREADS_PER_BLOCK
-        blockspergrid = (out.size + threadsperblock - 1) // threadsperblock
-        tensor_conv1d_kernel[blockspergrid, threadsperblock](
-            *out.tuple(), out.size,
-            *input.tuple(),
-            *weight.tuple(),
-            reverse
-        )
-        return out
-
-    @staticmethod
-    def conv2d(input: Tensor, weight: Tensor, reverse: bool = False) -> Tensor:
-        # input: (batch, in_channels, height, width)
-        # weight: (out_channels, in_channels, k_height, k_width)
-        batch, in_channels, in_height, in_width = input.shape
-        out_channels, in_channels_wt, k_height, k_width = weight.shape
-        assert in_channels == in_channels_wt
-
-        out = input.zeros((batch, out_channels, in_height, in_width))
-        threadsperblock = THREADS_PER_BLOCK
-        blockspergrid = (out.size + threadsperblock - 1) // threadsperblock
-        tensor_conv2d_kernel[blockspergrid, threadsperblock](
-            *out.tuple(), out.size,
-            *input.tuple(),
-            *weight.tuple(),
-            reverse
-        )
-        return out
-
-
-# Below are the conv kernels
-
-def tensor_conv1d_kernel(
-    out: Storage,
-    out_shape: Shape,
-    out_strides: Strides,
-    out_size: int,
-    inp: Storage,
-    inp_shape: Shape,
-    inp_strides: Strides,
-    wgt: Storage,
-    wgt_shape: Shape,
-    wgt_strides: Strides,
-    reverse: bool,
-):
-    # out: (batch, out_channels, width)
-    # inp: (batch, in_channels, width)
-    # wgt: (out_channels, in_channels, kernel_width)
-
-    i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    if i >= out_size:
-        return
-
-    batch = out_shape[0]
-    out_channels = out_shape[1]
-    width_out = out_shape[2]
-    in_channels = inp_shape[1]
-    in_width = inp_shape[2]
-    kernel_width = wgt_shape[2]
-
-    # Convert linear index to (b, oc, w_out)
-    out_index = cuda.local.array(MAX_DIMS, numba.int32)
-    to_index(i, out_shape, out_index)
-    b, oc, w_out = out_index[0], out_index[1], out_index[2]
-
-    val = 0.0
-    for ic in range(in_channels):
-        for k in range(kernel_width):
-            if reverse:
-                w_in = w_out - k
+        # Load extra columns if needed
+        if lj < MAX_CONV_W:
+            if j + TPB < W and i < H:
+                a_shared[li, lj + TPB] = a[i, j + TPB]
             else:
-                w_in = w_out + k
+                a_shared[li, lj + TPB] = 0.0
 
-            if 0 <= w_in < in_width:
-                inp_pos = (b * inp_strides[0] + ic * inp_strides[1] + w_in * inp_strides[2])
-                w_pos = (oc * wgt_strides[0] + ic * wgt_strides[1] + k * wgt_strides[2])
-                val += inp[inp_pos] * wgt[w_pos]
+        # Load extra rows if needed
+        if li < MAX_CONV_H:
+            if i + TPB < H and j < W:
+                a_shared[li + TPB, lj] = a[i + TPB, j]
+            else:
+                a_shared[li + TPB, lj] = 0.0
 
-    out_pos = (b * out_strides[0] + oc * out_strides[1] + w_out * out_strides[2])
-    out[out_pos] = val
+        # Load the bottom-right corner if both extra row and column needed
+        if li < MAX_CONV_H and lj < MAX_CONV_W:
+            if i + TPB < H and j + TPB < W:
+                a_shared[li + TPB, lj + TPB] = a[i + TPB, j + TPB]
+            else:
+                a_shared[li + TPB, lj + TPB] = 0.0
 
-tensor_conv1d_kernel = cuda.jit()(tensor_conv1d_kernel)
+        cuda.syncthreads()
+
+        # Compute convolution
+        if i < H and j < W:
+            val = 0.0
+            for p in range(Kh):
+                for q in range(Kw):
+                    val += a_shared[li + p, lj + q] * b[p, q]
+            out[i, j] = val
+
+    return call
 
 
-def tensor_conv2d_kernel(
-    out: Storage,
-    out_shape: Shape,
-    out_strides: Strides,
-    out_size: int,
-    inp: Storage,
-    inp_shape: Shape,
-    inp_strides: Strides,
-    wgt: Storage,
-    wgt_shape: Shape,
-    wgt_strides: Strides,
-    reverse: bool,
-):
-    # out: (batch, out_channels, height, width)
-    # inp: (batch, in_channels, height, width)
-    # wgt: (out_channels, in_channels, k_height, k_width)
+# Test 1: Small array and small kernel
+H, W = 6, 6
+a = np.arange(H*W, dtype=np.float32).reshape((H,W))
+b = np.array([[1,2,1],
+              [0,1,0],
+              [1,2,1]], dtype=np.float32)
+out = np.zeros((H,W), dtype=np.float32)
 
-    i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
-    if i >= out_size:
-        return
+problem = CudaProblem(
+    "2D Conv (Simple)",
+    conv2d_test,
+    [a, b],
+    out,
+    [H, W, Kh, Kw],
+    blockspergrid=Coord(2,2),
+    threadsperblock=Coord(TPB,TPB),
+    spec=lambda a,b: conv2d_spec(a,b),
+)
+problem.check()
 
-    batch = out_shape[0]
-    out_channels = out_shape[1]
-    out_height = out_shape[2]
-    out_width = out_shape[3]
-    in_channels = inp_shape[1]
-    in_height = inp_shape[2]
-    in_width = inp_shape[3]
-    k_height = wgt_shape[2]
-    k_width = wgt_shape[3]
+# Test 2: Larger array and same kernel
+H2, W2 = 8, 8
+a2 = np.arange(H2*W2, dtype=np.float32).reshape((H2,W2))
+out2 = np.zeros((H2,W2), dtype=np.float32)
 
-    out_index = cuda.local.array(MAX_DIMS, numba.int32)
-    to_index(i, out_shape, out_index)
-    b, oc, h_out, w_out = out_index[0], out_index[1], out_index[2], out_index[3]
+problem = CudaProblem(
+    "2D Conv (Full)",
+    conv2d_test,
+    [a2, b],
+    out2,
+    [H2, W2, Kh, Kw],
+    blockspergrid=Coord((H2+TPB-1)//TPB,(W2+TPB-1)//TPB),
+    threadsperblock=Coord(TPB,TPB),
+    spec=lambda a,b: conv2d_spec(a,b),
+)
+problem.check()
 
-    val = 0.0
-    for ic in range(in_channels):
-        for kh in range(k_height):
-            for kw in range(k_width):
-                if reverse:
-                    h_in = h_out - kh
-                    w_in = w_out - kw
-                else:
-                    h_in = h_out + kh
-                    w_in = w_out + kw
 
-                if 0 <= h_in < in_height and 0 <= w_in < in_width:
-                    inp_pos = (b * inp_strides[0] + ic * inp_strides[1] + h_in * inp_strides[2] + w_in * inp_strides[3])
-                    w_pos = (oc * wgt_strides[0] + ic * wgt_strides[1] + kh * wgt_strides[2] + kw * wgt_strides[3])
-                    val += inp[inp_pos] * wgt[w_pos]
 
-    out_pos = (b * out_strides[0] + oc * out_strides[1] + h_out * out_strides[2] + w_out * out_strides[3])
-    out[out_pos] = val
+#1d conv
+def conv_spec(a, b):
+    out = np.zeros(*a.shape)
+    len = b.shape[0]
+    for i in range(a.shape[0]):
+        out[i] = sum([a[i + j] * b[j] for j in range(len) if i + j < a.shape[0]])
+    return out
 
-tensor_conv2d_kernel = cuda.jit()(tensor_conv2d_kernel)
+
+MAX_CONV = 4
+TPB = 8
+TPB_MAX_CONV = TPB + MAX_CONV
+def conv_test(cuda):
+    def call(out, a, b, a_size, b_size) -> None:
+        i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
+        local_i = cuda.threadIdx.x
+
+        # FILL ME IN (roughly 17 lines)
+        shared = cuda.shared.array(TPB_MAX_CONV, numba.float32)
+        # Load main part
+        if i < a_size:
+            shared[local_i] = a[i]
+        else:
+            shared[local_i] = 0
+
+        # Load the tail part for convolution
+        if local_i < b_size - 1 and (i + TPB) < a_size:
+            shared[local_i + TPB] = a[i + TPB]
+        
+
+        cuda.syncthreads()
+
+        if i < a_size:
+            val = 0.0
+            for j in range(b_size):
+                if (local_i + j) < TPB_MAX_CONV and (i + j) < a_size:
+                    val += shared[local_i + j] * b[j]
+            out[i] = val
+
+    return call
+
+
+# Test 1
+
+SIZE = 6
+CONV = 3
+out = np.zeros(SIZE)
+a = np.arange(SIZE)
+b = np.arange(CONV)
+problem = CudaProblem(
+    "1D Conv (Simple)",
+    conv_test,
+    [a, b],
+    out,
+    [SIZE, CONV],
+    Coord(1, 1),
+    Coord(TPB, 1),
+    spec=conv_spec,
+)
+problem.show()
+problem.check()
+
+# Test 2
+
+
+out = np.zeros(15)
+a = np.arange(15)
+b = np.arange(4)
+problem = CudaProblem(
+    "1D Conv (Full)",
+    conv_test,
+    [a, b],
+    out,
+    [15, 4],
+    Coord(2, 1),
+    Coord(TPB, 1),
+    spec=conv_spec,
+)
+
+problem.show()
+problem.check()
+
