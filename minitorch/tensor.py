@@ -835,6 +835,16 @@ class Tensor:
             return Max.apply(self, dim_tensor)
 
     def logsoftmax(self, dim: int) -> Tensor:
+        """Functional API for the LogSoftmax function.
+
+        Args:
+            input (Tensor): Input tensor.
+            dim (int): Dimension along which to apply LogSoftmax.
+
+        Returns:
+            Tensor: Tensor containing the LogSoftmax results.
+
+        """
         dim_tensor = Tensor.make([dim], shape=(1,), backend=self.backend)
         return LogSoftmax.apply(self, dim_tensor)
 

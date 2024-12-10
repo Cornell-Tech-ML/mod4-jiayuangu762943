@@ -18,7 +18,7 @@ from .tensor_functions import Function
 Fn = TypeVar("Fn")
 
 
-def njit(fn: Fn, **kwargs: Any) -> Fn:
+def njit(fn: Fn, **kwargs: Any) -> Fn:  # noqa: D103
     return _njit(inline="always", **kwargs)(fn)  # type: ignore
 
 
@@ -149,7 +149,7 @@ class Conv1dFun(Function):
         return output
 
     @staticmethod
-    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, Tensor]:  # noqa: D102
         input, weight = ctx.saved_values
         batch, in_channels, w = input.shape
         out_channels, in_channels, kw = weight.shape

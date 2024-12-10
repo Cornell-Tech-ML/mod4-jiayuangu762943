@@ -2,7 +2,7 @@ import numba # type: ignore
 import numpy as np # type: ignore
 from lib import CudaProblem, Coord # type: ignore
 
-def conv2d_spec(a, b):
+def conv2d_spec(a, b):  # noqa: ANN001, ANN201, D103
     H, W = a.shape
     Kh, Kw = b.shape
     out = np.zeros_like(a, dtype=np.float32)
@@ -25,8 +25,8 @@ MAX_CONV_W = Kw - 1
 H_TPB = TPB + MAX_CONV_H
 W_TPB = TPB + MAX_CONV_W
 
-def conv2d_test(cuda):
-    def call(out, a, b, H, W, Kh, Kw) -> None:
+def conv2d_test(cuda):  # noqa: ANN001, ANN201, D103
+    def call(out, a, b, H, W, Kh, Kw) -> None:  # noqa: ANN001
         # Shared memory size accommodates the tile plus the kernel extension
         a_shared = cuda.shared.array((H_TPB, W_TPB), numba.float32)
 
@@ -116,7 +116,7 @@ problem.check()
 
 
 #1d conv
-def conv_spec(a, b):
+def conv_spec(a, b):   # noqa: ANN001, ANN201, D103
     out = np.zeros(*a.shape)
     len = b.shape[0]
     for i in range(a.shape[0]):
@@ -127,8 +127,8 @@ def conv_spec(a, b):
 MAX_CONV = 4
 TPB = 8
 TPB_MAX_CONV = TPB + MAX_CONV
-def conv_test(cuda):
-    def call(out, a, b, a_size, b_size) -> None:
+def conv_test(cuda):  # noqa: ANN001, ANN201, D103
+    def call(out, a, b, a_size, b_size) -> None:  # noqa: ANN001
         i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
         local_i = cuda.threadIdx.x
 

@@ -540,6 +540,17 @@ class Max(Function):
 class LogSoftmax(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
+        """Forward pass for the LogSoftmax function.
+
+        Args:
+            ctx (Context): Context to save intermediate values for backward computation.
+            input (Tensor): Input tensor.
+            dim_tensor (Tensor): Tensor containing the dimension along which to apply LogSoftmax.
+
+        Returns:
+            Tensor: Tensor containing the LogSoftmax results.
+
+        """
         dim = int(dim_tensor.item())
 
         # Step 1: Compute max along dim for numerical stability
@@ -570,6 +581,16 @@ class LogSoftmax(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        """Backward pass for the LogSoftmax function.
+
+        Args:
+            ctx (Context): Context containing saved tensors from the forward pass.
+            grad_output (Tensor): Gradient of the loss with respect to the output.
+
+        Returns:
+            Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
+
+        """
         softmax, dim_int = ctx.saved_tensors
 
         # Step 1: Compute the sum of grad_output along dim

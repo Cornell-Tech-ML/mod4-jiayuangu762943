@@ -313,7 +313,6 @@ def _sum_practice(out: Storage, a: Storage, size: int) -> None:
     cache = cuda.shared.array(BLOCK_DIM, numba.float64)
     i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
     pos = cuda.threadIdx.x
-    bid = cuda.blockIdx.x
     # TODO: Implement for Task 3.3.
     # Load data into shared memory
     if i < size:

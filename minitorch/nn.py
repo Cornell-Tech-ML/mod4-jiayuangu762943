@@ -198,6 +198,17 @@ def max(input: Tensor, dim: int) -> Tensor:
 class Softmax(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
+        """Forward pass for the Softmax function.
+
+        Args:
+            ctx (Context): Context to save intermediate values for backward computation.
+            input (Tensor): Input tensor.
+            dim_tensor (Tensor): Tensor containing the dimension along which to apply Softmax.
+
+        Returns:
+            Tensor: Tensor containing the Softmax results.
+
+        """
         dim = int(dim_tensor.item())
         input_array = input.to_numpy()
 
@@ -218,6 +229,16 @@ class Softmax(Function):
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        """Backward pass for the Softmax function.
+
+        Args:
+            ctx (Context): Context containing saved tensors from the forward pass.
+            grad_output (Tensor): Gradient of the loss with respect to the output.
+
+        Returns:
+            Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
+
+        """
         softmax_array, dim = ctx.saved_tensors
         grad_output_array = grad_output.to_numpy()
 
@@ -229,6 +250,16 @@ class Softmax(Function):
         return grad_input, -1
     
 def softmax(input: Tensor, dim: int) -> Tensor:
+    """Functional API for the Softmax function.
+
+    Args:
+        input (Tensor): Input tensor.
+        dim (int): Dimension along which to apply Softmax.
+
+    Returns:
+        Tensor: Tensor containing the Softmax results.
+
+    """
     dim_tensor = Tensor.make([dim], shape=(1,), backend=input.backend)
     return Softmax.apply(input, dim_tensor)
 
@@ -236,6 +267,17 @@ def softmax(input: Tensor, dim: int) -> Tensor:
 class LogSoftmax(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
+        """Forward pass for the LogSoftmax function.
+
+        Args:
+            ctx (Context): Context to save intermediate values for backward computation.
+            input (Tensor): Input tensor.
+            dim_tensor (Tensor): Tensor containing the dimension along which to apply LogSoftmax.
+
+        Returns:
+            Tensor: Tensor containing the LogSoftmax results.
+
+        """
         dim = int(dim_tensor.item())
 
         # Step 1: Compute max along dim for numerical stability
@@ -265,6 +307,16 @@ class LogSoftmax(Function):
         return log_softmax
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        """Backward pass for the LogSoftmax function.
+
+        Args:
+            ctx (Context): Context containing saved tensors from the forward pass.
+            grad_output (Tensor): Gradient of the loss with respect to the output.
+
+        Returns:
+            Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
+
+        """
         softmax, dim_int = ctx.saved_tensors
 
         # Step 1: Compute the sum of grad_output along dim
@@ -279,6 +331,16 @@ class LogSoftmax(Function):
         return grad_input, -1
 
 def logsoftmax(input: Tensor, dim: int) -> Tensor:
+    """Functional API for the LogSoftmax function.
+
+    Args:
+        input (Tensor): Input tensor.
+        dim (int): Dimension along which to apply LogSoftmax.
+
+    Returns:
+        Tensor: Tensor containing the LogSoftmax results.
+
+    """
     dim_tensor = Tensor.make([dim], shape=(1,), backend=input.backend)
     return LogSoftmax.apply(input, dim_tensor)
 
@@ -287,6 +349,17 @@ def logsoftmax(input: Tensor, dim: int) -> Tensor:
 class MaxPool2dFun(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, kernel: Tensor) -> Tensor:
+        """Forward pass for 2D Max Pooling.
+
+        Args:
+            ctx (Context): Context to save intermediate values for backward computation.
+            input (Tensor): Input tensor with shape (batch, channels, height, width).
+            kernel (Tensor): Tensor specifying the kernel size (kh, kw).
+
+        Returns:
+            Tensor: Tensor containing the results of max pooling.
+
+        """
         kh, kw = int(kernel[0]), int(kernel[1])
 
         batch, channels, height, width = input.shape
@@ -321,6 +394,16 @@ class MaxPool2dFun(Function):
         return max_tensor
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        """Backward pass for 2D Max Pooling.
+
+        Args:
+            ctx (Context): Context containing saved tensors from the forward pass.
+            grad_output (Tensor): Gradient of the loss with respect to the output.
+
+        Returns:
+            Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
+
+        """
         mask, num_max, kh, kw = ctx.saved_tensors
         # mask shape: (batch, channels, new_height, new_width, kh * kw)
         # num_max shape: (batch, channels, new_height, new_width)
@@ -358,7 +441,7 @@ def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
 
 class Dropout(Function):
     @staticmethod
-    def forward(ctx: Context, input: Tensor, p_tensor: Tensor) -> Tensor:
+    def forward(ctx: Context, input: Tensor, p_tensor: Tensor) -> Tensor:  # noqa: D417
         """Apply dropout to the input tensor.
 
         Args:
@@ -411,7 +494,7 @@ class Dropout(Function):
         grad_input = grad_output * mask / (1.0 - p)
         return grad_input, -1
 
-def dropout(input: Tensor, p: float, ignore: Optional[bool] = None) -> Tensor:
+def dropout(input: Tensor, p: float, ignore: Optional[bool] = None) -> Tensor:  # noqa: D417
     """Apply dropout to the input tensor.
 
     Args:
