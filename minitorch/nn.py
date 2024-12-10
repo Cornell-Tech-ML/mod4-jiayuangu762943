@@ -508,6 +508,5 @@ def dropout(input: Tensor, p: float, ignore: Optional[bool] = None) -> Tensor:  
     """
     if ignore:
         return input
-    
     p_tensor = Tensor.make([p], shape=(1,), backend=input.backend)
     return Dropout.apply(input, p_tensor)
