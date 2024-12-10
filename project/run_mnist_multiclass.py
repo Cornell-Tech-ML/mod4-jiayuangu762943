@@ -38,7 +38,7 @@ class Conv2d(minitorch.Module):
         super().__init__()
         self.weights = RParam(out_channels, in_channels, kh, kw)
         self.bias = RParam(1,out_channels, 1, 1)
-       
+
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
@@ -92,20 +92,20 @@ class Network(minitorch.Module):
     def forward(self, x):
         # TODO: Implement for Task 4.5.
         # First Convolutional Layer + ReLU
-        mid = self.conv1.forward(x)       
+        mid = self.conv1.forward(x)
         mid = mid.relu()
-        self.mid = mid                     
+        self.mid = mid
 
         # Second Convolutional Layer + ReLU
-        out = self.conv2.forward(mid)     
+        out = self.conv2.forward(mid)
         out = out.relu()
-        self.out = out                     
+        self.out = out
 
         # Max Pooling with 4x4 kernel
-        out = self.pool(out, (4,4))  
+        out = self.pool(out, (4,4))
 
         # Flatten the tensor
-        out = out.view(out.shape[0], int(out.size / out.shape[0]))   
+        out = out.view(out.shape[0], int(out.size / out.shape[0]))
 
         # First Fully Connected Layer + ReLU + Dropout
         out = self.fc1.forward(out)         # Shape: (batch_size, 64)

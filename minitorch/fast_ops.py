@@ -194,13 +194,14 @@ def tensor_map(
         in_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        if (len(out_strides) != len(in_strides) 
+        if (
+            len(out_strides) != len(in_strides)
             or (out_strides != in_strides).any()
             or (out_shape != in_shape).any()
         ):
             for i in prange(len(out)):
-                out_index:Index = np.empty(MAX_DIMS, np.int32)
-                in_index:Index = np.empty(MAX_DIMS, np.int32)
+                out_index: Index = np.empty(MAX_DIMS, np.int32)
+                in_index: Index = np.empty(MAX_DIMS, np.int32)
                 to_index(i, out_shape, out_index)
                 broadcast_index(out_index, out_shape, in_shape, in_index)
                 o = index_to_position(out_index, out_strides)
@@ -248,7 +249,8 @@ def tensor_zip(
         b_strides: Strides,
     ) -> None:
         # TODO: Implement for Task 3.1.
-        if (len(out_strides) != len(a_strides) 
+        if (
+            len(out_strides) != len(a_strides)
             or len(out_strides) != len(b_strides)
             or (out_strides != a_strides).any()
             or (out_strides != b_strides).any()
@@ -256,9 +258,9 @@ def tensor_zip(
             or (out_shape != b_shape).any()
         ):
             for i in prange(len(out)):
-                out_index:Index = np.empty(MAX_DIMS, np.int32)
-                a_index:Index = np.empty(MAX_DIMS, np.int32)
-                b_index:Index = np.empty(MAX_DIMS, np.int32)
+                out_index: Index = np.empty(MAX_DIMS, np.int32)
+                a_index: Index = np.empty(MAX_DIMS, np.int32)
+                b_index: Index = np.empty(MAX_DIMS, np.int32)
 
                 to_index(i, out_shape, out_index)
                 o = index_to_position(out_index, out_strides)
@@ -306,7 +308,7 @@ def tensor_reduce(
     ) -> None:
         # TODO: Implement for Task 3.1.
         for i in prange(len(out)):
-            out_index:Index = np.empty(MAX_DIMS, np.int32)
+            out_index: Index = np.empty(MAX_DIMS, np.int32)
             reduce_size = a_shape[reduce_dim]
             to_index(i, out_shape, out_index)
             o = index_to_position(out_index, out_strides)
@@ -316,7 +318,7 @@ def tensor_reduce(
             for s in range(reduce_size):
                 accum = fn(accum, a_storage[j])
                 j += step
-                
+
             out[o] = accum
 
     return njit(_reduce, parallel=True)  # type: ignore
@@ -380,9 +382,10 @@ def _tensor_matrix_multiply(
                     a_inner += a_strides[2]
                     b_inner += b_strides[1]
                 out_position = (
-                    i1 * out_strides[0] + i2* out_strides[1] + i3 * out_strides[2]
+                    i1 * out_strides[0] + i2 * out_strides[1] + i3 * out_strides[2]
                 )
                 out[out_position] = acc
-                
+
+
 tensor_matrix_multiply = njit(_tensor_matrix_multiply, parallel=True)
 assert tensor_matrix_multiply is not None

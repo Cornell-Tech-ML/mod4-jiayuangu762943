@@ -1,7 +1,7 @@
 from typing import Tuple, TypeVar, Any
 
-from numba import prange # type: ignore
-from numba import njit as _njit # type: ignore
+from numba import prange  # type: ignore
+from numba import njit as _njit  # type: ignore
 
 from .autodiff import Context
 from .tensor import Tensor

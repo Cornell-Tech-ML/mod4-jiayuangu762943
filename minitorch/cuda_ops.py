@@ -473,7 +473,6 @@ def _mm_practice(out: Storage, a: Storage, b: Storage, size: int) -> None:
         temp += sA[row, k] * sB[k, col]
     out[row * size + col] = temp
 
-
 jit_mm_practice = jit(_mm_practice)
 
 

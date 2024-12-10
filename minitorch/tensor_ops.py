@@ -105,7 +105,8 @@ class TensorBackend:
         self.matrix_multiply = ops.matrix_multiply
         self.cuda = ops.cuda
 
-        self.max_reduce = ops.reduce(operators.max, float('-inf'))
+        self.max_reduce = ops.reduce(operators.max, float("-inf"))
+
 
 class SimpleOps(TensorOps):
     @staticmethod

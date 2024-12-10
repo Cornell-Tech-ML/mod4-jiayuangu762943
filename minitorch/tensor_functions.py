@@ -482,6 +482,7 @@ class LT(Function):
         grad_t2 = grad_output.zeros()
         return grad_t1, grad_t2
 
+
 class Max(Function):
     """Max function over tensor elements."""
 
@@ -490,11 +491,13 @@ class Max(Function):
         """Forward pass for max.
 
         Args:
+        ----
             ctx (Context): The context to save information for backward computation.
             t1 (Tensor): The input tensor.
             dim (Tensor): The dimension to reduce over.
 
         Returns:
+        -------
             Tensor: The max values along the specified dimension.
 
         """
@@ -518,10 +521,12 @@ class Max(Function):
         """Backward pass for max.
 
         Args:
+        ----
             ctx (Context): The context with saved tensors.
             grad_output (Tensor): The gradient of the output tensor.
 
         Returns:
+        -------
             Tuple[Tensor, None]: The gradient with respect to the input tensor and None for dim.
 
         """
@@ -536,18 +541,21 @@ class Max(Function):
         # Step 3: Distribute scaled gradients only to positions where mask == 1 using zip with operators.mul
         grad_input = mask.f.mul_zip(mask, grad_scaled)
         return grad_input, -1
-    
+
+
 class LogSoftmax(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
         """Forward pass for the LogSoftmax function.
 
         Args:
+        ----
             ctx (Context): Context to save intermediate values for backward computation.
             input (Tensor): Input tensor.
             dim_tensor (Tensor): Tensor containing the dimension along which to apply LogSoftmax.
 
         Returns:
+        -------
             Tensor: Tensor containing the LogSoftmax results.
 
         """
@@ -584,10 +592,12 @@ class LogSoftmax(Function):
         """Backward pass for the LogSoftmax function.
 
         Args:
+        ----
             ctx (Context): Context containing saved tensors from the forward pass.
             grad_output (Tensor): Gradient of the loss with respect to the output.
 
         Returns:
+        -------
             Tuple[Tensor, int]: Gradient of the loss with respect to the input and a dummy integer.
 
         """
@@ -597,12 +607,15 @@ class LogSoftmax(Function):
         sum_grad = grad_output.sum(dim_int)  # Shape: same as sum_exp
 
         # Step 2: Compute softmax_sum_grad = softmax * sum_grad
-        softmax_sum_grad = softmax.f.mul_zip(softmax, sum_grad)  # Element-wise multiplication
+        softmax_sum_grad = softmax.f.mul_zip(
+            softmax, sum_grad
+        )  # Element-wise multiplication
 
         # Step 3: Compute grad_input = grad_output - softmax_sum_grad
         grad_input = grad_output - softmax_sum_grad  # Element-wise subtraction
 
         return grad_input, -1
+
 
 class EQ(Function):
     """Element-wise equality comparison."""
@@ -969,14 +982,14 @@ but was expecting derivative %f from central difference.
         # max_val = np.max(slice_vals)
         # num_max = np.sum(slice_vals == max_val)
         # is_max = x[ind] == max_val
-        
+
         # # If the index is a maximum, expected gradient is 1.0 / num_max
         # # Otherwise, expected gradient is 0.0
         # expected_grad = (1.0 / num_max) if is_max else 0.0
-        
+
         # # Get received gradient from backward pass
         # received_grad = x.grad[ind]
-        
+
         # # Compare gradients
         # np.testing.assert_allclose(
         #     received_grad,

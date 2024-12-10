@@ -58,8 +58,8 @@ class Conv1d(minitorch.Module):
         # # Initialize output tensor with zeros
         # out = input.zeros(
         #     (batch_size, out_channels, out_length))
-        
-        
+
+
         # # Perform convolution
         # for b in range(batch_size):
         #     for oc in range(out_channels):
@@ -333,11 +333,11 @@ def encode_sentiment_data(dataset, pretrained_embeddings, N_train, N_val=0):
 
 def load_glove_embeddings(path="project/data/glove.6B/glove.6B.50d.txt"):
     """Load GloVe embeddings from local file.
-    
+
     Args:
     ----
         path: Path to the GloVe embeddings file
-        
+
     Returns:
     -------
         dict: Word to embedding mapping
