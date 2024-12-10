@@ -294,7 +294,6 @@ class Softmax(Function):
             grad_output_array
             - np.sum(grad_output_array * softmax_array, axis=dim, keepdims=True)
         )
-
         grad_input = Tensor.make(
             grad_input_array.astype(np.float64).flatten(),
             shape=grad_output.shape,
