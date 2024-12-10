@@ -1,7 +1,7 @@
-from typing import List, Optional
+from typing import List, Optional, cast
 
-from hypothesis import settings
-from hypothesis.strategies import (
+from hypothesis import settings  # type: ignore
+from hypothesis.strategies import (  # type: ignore
     DrawFn,
     SearchStrategy,
     composite,
@@ -45,16 +45,17 @@ def tensor_data(
     shape: Optional[UserShape] = None,
 ) -> TensorData:
     if shape is None:
-        shape = draw(shapes())
-    size = int(minitorch.prod(shape))
+        shape = cast(UserShape, draw(shapes()))  # type: ignore
+
+    size = int(minitorch.prod([float(ele) for ele in shape]))
     data = draw(lists(numbers, min_size=size, max_size=size))
-    permute: List[int] = draw(permutations(range(len(shape))))
-    permute_shape = tuple([shape[i] for i in permute])
+    permute: List[int] = draw(permutations(range(len(shape))))  # type: ignore
+    permute_shape = tuple([shape[i] for i in permute])  # type: ignore
     z = sorted(enumerate(permute), key=lambda a: a[1])
     reverse_permute = [a[0] for a in z]
     td = minitorch.TensorData(data, permute_shape)
     ret = td.permute(*reverse_permute)
-    assert ret.shape[0] == shape[0]
+    assert ret.shape[0] == shape[0]  # type: ignore
     return ret
 
 
@@ -112,7 +113,7 @@ def matmul_tensors(
     l2 = (j, k)
     values = []
     for shape in [l1, l2]:
-        size = int(minitorch.prod(shape))
+        size = int(minitorch.prod(shape))  # type: ignore
         data = draw(lists(numbers, min_size=size, max_size=size))
         values.append(minitorch.Tensor(minitorch.TensorData(data, shape)))
     return values
