@@ -31,8 +31,10 @@ from .tensor_functions import (
     Sum,
     View,
     Max,
+    LogSoftmax
     # tensor,
 )
+
 
 if TYPE_CHECKING:
     from typing import Any, Iterable, List, Optional, Sequence, Tuple, Type, Union
@@ -831,3 +833,9 @@ class Tensor:
         else:
             dim_tensor = Tensor.make([dim], shape=(1,), backend=self.backend)
             return Max.apply(self, dim_tensor)
+
+    def logsoftmax(self, dim: int) -> Tensor:
+        dim_tensor = Tensor.make([dim], shape=(1,), backend=self.backend)
+        return LogSoftmax.apply(self, dim_tensor)
+
+

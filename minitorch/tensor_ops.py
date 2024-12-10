@@ -106,7 +106,7 @@ class TensorBackend:
         self.cuda = ops.cuda
 
         self.max_reduce = ops.reduce(operators.max, float('-inf'))
-        
+
 class SimpleOps(TensorOps):
     @staticmethod
     def map(fn: Callable[[float], float]) -> MapProto:

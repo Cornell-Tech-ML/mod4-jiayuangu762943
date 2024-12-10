@@ -29,20 +29,22 @@ class Linear(minitorch.Module):
 
     def forward(self, x):
         batch, in_size = x.shape
-        return (
-            x.view(batch, in_size) @ self.weights.value.view(in_size, self.out_size)
-        ).view(batch, self.out_size) + self.bias.value
+        matmul = x @ self.weights.value
+        return matmul.view(batch, self.out_size) + self.bias.value
 
 
 class Conv2d(minitorch.Module):
     def __init__(self, in_channels, out_channels, kh, kw):
         super().__init__()
         self.weights = RParam(out_channels, in_channels, kh, kw)
-        self.bias = RParam(out_channels, 1, 1)
+        self.bias = RParam(1,out_channels, 1, 1)
+       
 
     def forward(self, input):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        conv = minitorch.conv2d(input, self.weights.value)
+        conv = conv + self.bias.value
+        return conv
 
 
 class Network(minitorch.Module):
@@ -68,11 +70,55 @@ class Network(minitorch.Module):
         self.out = None
 
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        self.conv1 = Conv2d(in_channels=1, out_channels=4, kh=3, kw=3)
+        # self.add_submodule(self.conv1)
+
+        self.conv2 = Conv2d(in_channels=4, out_channels=8, kh=3, kw=3)
+        # self.add_submodule(self.conv2)
+
+        # Define pooling layer
+        self.pool = minitorch.nn.maxpool2d  # Assuming minitorch has a max_pool2d function
+
+        # Define linear layers
+        self.fc1 = Linear(in_size=392, out_size=64)  # Adjusted based on pooling
+        # self.add_submodule(self.fc1)
+
+        self.fc2 = Linear(in_size=64, out_size=10)
+        # self.add_submodule(self.fc2)
+
+        # Define dropout rate
+        self.dropout_rate = 0.25
 
     def forward(self, x):
         # TODO: Implement for Task 4.5.
-        raise NotImplementedError("Need to implement for Task 4.5")
+        # First Convolutional Layer + ReLU
+        mid = self.conv1.forward(x)       
+        mid = mid.relu()
+        self.mid = mid                     
+
+        # Second Convolutional Layer + ReLU
+        out = self.conv2.forward(mid)     
+        out = out.relu()
+        self.out = out                     
+
+        # Max Pooling with 4x4 kernel
+        out = self.pool(out, (4,4))  
+
+        # Flatten the tensor
+        out = out.view(out.shape[0], int(out.size / out.shape[0]))   
+
+        # First Fully Connected Layer + ReLU + Dropout
+        out = self.fc1.forward(out)         # Shape: (batch_size, 64)
+        out = out.relu()
+        out = minitorch.nn.dropout(out, p=self.dropout_rate, ignore=False)
+
+        # Second Fully Connected Layer
+        out = self.fc2.forward(out)         # Shape: (batch_size, 10)
+
+        # LogSoftmax
+        log_softmax = out.logsoftmax(dim=1) # Shape: (batch_size, 10)
+
+        return log_softmax
 
 
 def make_mnist(start, stop):
@@ -99,7 +145,7 @@ class ImageTrain:
         return self.model.forward(minitorch.tensor([x], backend=BACKEND))
 
     def train(
-        self, data_train, data_val, learning_rate, max_epochs=500, log_fn=default_log_fn
+        self, data_train, data_val, learning_rate, max_epochs=25, log_fn=default_log_fn
     ):
         (X_train, y_train) = data_train
         (X_val, y_val) = data_val
@@ -171,4 +217,4 @@ class ImageTrain:
 
 if __name__ == "__main__":
     data_train, data_val = (make_mnist(0, 5000), make_mnist(10000, 10500))
-    ImageTrain().train(data_train, data_val, learning_rate=0.01)
+    ImageTrain().train(data_train, data_val, learning_rate=0.005)

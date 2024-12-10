@@ -237,52 +237,45 @@ class LogSoftmax(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
         dim = int(dim_tensor.item())
-        input_array = input.to_numpy()
 
+        # Step 1: Compute max along dim for numerical stability
+        max_tensor = input.f.max_reduce(input, dim)  # Shape: same as input with dim=1
 
-        # Subtract max for numerical stability
+        # Step 2: Subtract max_tensor from input (broadcasted)
+        shifted = input - max_tensor  # Element-wise subtraction
 
-        max_vals_array = np.max(input_array, axis=dim)
-        # Expand max_vals_array to match input_array's shape
-        shape = list(input.shape)
-        shape[dim] = 1
-        expanded_max_vals = max_vals_array.reshape(shape)
-        x_shifted = input_array - expanded_max_vals
+        # Step 3: Exponentiate the shifted tensor
+        exp_shifted = shifted.f.exp_map(shifted)  # Element-wise exponentiation
 
-        exp_x_shifted = np.exp(x_shifted)
+        # Step 4: Sum of exponentials along dim
+        sum_exp = exp_shifted.sum(dim)  # Sum along dim
 
-        # Sum exp_x_shifted along the specified dimension
-        sum_exp_x = np.sum(exp_x_shifted, axis=dim, keepdims=True)
-        logsumexp = np.log(sum_exp_x)
-        output_array = x_shifted - logsumexp
+        # Step 5: Log of sum_exp
+        log_sum_exp = sum_exp.f.log_map(sum_exp)  # Element-wise logarithm
 
-        # Save softmax_array and dimension for backward
-        softmax_array = np.exp(output_array)
-        
-        ctx.save_for_backward(softmax_array, dim)
+        # Step 6: Compute LogSoftmax by subtracting log_sum_exp from shifted
+        log_softmax = shifted - log_sum_exp  # Element-wise subtraction
 
-        return Tensor.make(output_array.flatten(), shape=input.shape, backend=input.backend)
+        # Step 7: Compute softmax = exp(log_softmax)
+        softmax = log_softmax.f.exp_map(log_softmax)  # Element-wise exponentiation
 
+        # Save softmax and dim for backward pass
+        ctx.save_for_backward(softmax, dim)
+
+        return log_softmax
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
-        softmax_array, dim = ctx.saved_tensors
-        grad_output_array = grad_output.to_numpy()
+        softmax, dim_int = ctx.saved_tensors
 
-        # Compute the sum of grad_output_array along the specified dimension
-        sum_grad = np.sum(grad_output_array, axis=dim, keepdims=True)
+        # Step 1: Compute the sum of grad_output along dim
+        sum_grad = grad_output.sum(dim_int)  # Shape: same as sum_exp
 
-        # Compute grad_input_array based on the correct derivative
-        grad_input_array = grad_output_array - softmax_array * sum_grad
+        # Step 2: Compute softmax_sum_grad = softmax * sum_grad
+        softmax_sum_grad = softmax.f.mul_zip(softmax, sum_grad)  # Element-wise multiplication
 
-        # Flatten grad_input_array for Tensor.make
-        grad_input_flat = grad_input_array.flatten()
+        # Step 3: Compute grad_input = grad_output - softmax_sum_grad
+        grad_input = grad_output - softmax_sum_grad  # Element-wise subtraction
 
-        # Create a Tensor for grad_input
-        grad_input = Tensor.make(
-            grad_input_flat,
-            shape=tuple(grad_output.shape),
-            backend=grad_output.backend
-        )
         return grad_input, -1
 
 def logsoftmax(input: Tensor, dim: int) -> Tensor:
@@ -294,43 +287,59 @@ def logsoftmax(input: Tensor, dim: int) -> Tensor:
 class MaxPool2dFun(Function):
     @staticmethod
     def forward(ctx: Context, input: Tensor, kernel: Tensor) -> Tensor:
-        kh, kw = int(kernel._tensor._storage[0]), int(kernel._tensor._storage[1])
-        tiled, new_height, new_width = tile(input, (kh, kw))
+        kh, kw = int(kernel[0]), int(kernel[1])
 
-        # Compute max along the last dimension (kh * kw)
-        input_array = tiled._tensor._storage.reshape(tiled.shape)
-        max_vals = np.max(input_array, axis=4)
-        max_indices = np.argmax(input_array, axis=len(tiled.shape)-1)
+        batch, channels, height, width = input.shape
 
-        ctx.save_for_backward(tiled.shape, max_indices, kh, kw)
+        # Compute output dimensions
+        new_height = height // kh
+        new_width = width // kw
 
-        max_vals_tensor = Tensor.make(max_vals.flatten(), shape=(tiled.shape[0], tiled.shape[1], new_height, new_width), backend=input.backend)
+        # Step 1: Reshape input to (batch, channels, new_height, kh, new_width, kw)
+        reshaped = input.contiguous().view(batch, channels, new_height, kh, new_width, kw)
 
-        return max_vals_tensor
+        # Step 2: Permute to (batch, channels, new_height, new_width, kh, kw)
+        permuted = reshaped.permute(0, 1, 2, 4, 3, 5)
 
+        # Step 3: Reshape to (batch, channels, new_height, new_width, kh * kw)
+        tiled = permuted.contiguous().view(batch, channels, new_height, new_width, kh * kw)
+
+        # Step 4: Compute max along the last dimension (kh * kw)
+        max_tensor = tiled.f.max_reduce(tiled, len(tiled.shape) - 1)  # Shape: (batch, channels, new_height, new_width)
+        
+        # Step 5: Create mask where tiled == max_tensor (broadcasted)
+        mask = tiled.f.eq_zip(tiled, max_tensor)     # Shape: (batch, channels, new_height, new_width, kh * kw)
+        
+
+        # Step 6: Count number of maxima per pooling window
+        num_max = mask.sum(len(mask.shape)-1)       # Shape: (batch, channels, new_height, new_width)
+
+        # Step 7: Save mask and num_max for backward pass
+        ctx.save_for_backward(mask, num_max, kh, kw)
+        
+        max_tensor = max_tensor.contiguous().view(batch, channels, new_height, new_width)
+        return max_tensor
     @staticmethod
-    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, None]:
-        tiled_shape, max_indices, kh, kw = ctx.saved_tensors
-        batch, channel, new_height, new_width, _ = tiled_shape
-        grad_output_array = grad_output._tensor._storage.reshape(grad_output.shape)
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        mask, num_max, kh, kw = ctx.saved_tensors
+        # mask shape: (batch, channels, new_height, new_width, kh * kw)
+        # num_max shape: (batch, channels, new_height, new_width)
 
-        grad_input_tiled = np.zeros(tiled_shape, dtype=grad_output_array.dtype)
+        # Step 1: Compute 1 / num_max
+        inv_num_max = num_max.f.inv_map(num_max)  # Shape: (batch, channels, new_height, new_width)
+        
+        inv_num_max = inv_num_max.contiguous().view(inv_num_max.shape[0],inv_num_max.shape[1],inv_num_max.shape[2], inv_num_max.shape[3])
+        # Step 2: Scale grad_output by 1 / num_max
+        grad_scaled = grad_output.f.mul_zip(grad_output, inv_num_max)  # Shape: (batch, channels, new_height, new_width)
 
-        # Distribute gradients to the positions of max indices
-        for b in range(batch):
-            for c in range(channel):
-                for h in range(new_height):
-                    for w in range(new_width):
-                        idx = max_indices[b, c, h, w]
-                        grad_input_tiled[b, c, h, w, idx] = grad_output_array[b, c, h, w]
+        grad_scaled = grad_scaled.contiguous().view(grad_scaled.shape[0], grad_scaled.shape[1], grad_scaled.shape[2], grad_scaled.shape[3], 1)
+        # Step 3: Multiply grad_scaled with mask
+        grad_input_tiled = mask.f.mul_zip(mask, grad_scaled)  # Shape: (batch, channels, new_height, new_width, kh * kw)
 
-        grad_input_tiled_tensor = Tensor.make(grad_input_tiled.flatten(), shape=tiled_shape)
+        # Step 4: Reshape grad_input_tiled back to (batch, channels, height, width)
+        grad_input = grad_input_tiled.contiguous().view(mask.shape[0], mask.shape[1], mask.shape[2] * kh, mask.shape[3] * kw)
 
-        # Reshape grad_input_tiled back to the input shape
-        grad_input = grad_input_tiled_tensor.view(batch, channel, new_height, new_width, kh, kw)
-        grad_input = grad_input.permute(0, 1, 2, 4, 3, 5).contiguous()
-        grad_input = grad_input.view(batch, channel, new_height * kh, new_width * kw)
-        return grad_input, None
+        return grad_input, -1
 
 def maxpool2d(input: Tensor, kernel: Tuple[int, int]) -> Tensor:
     """Compute 2D max pooling on a tensor.

@@ -499,24 +499,19 @@ class Max(Function):
 
         """
         dim_int = int(dim.item())
-        input_array = t1.to_numpy()  # Correct accessor
 
-        # Compute max values and indices
-        max_vals = np.max(input_array, axis=dim_int, keepdims=True)
-        mask = (input_array == max_vals).astype(float)
+        # Step 1: Compute max tensor using reduce with operators.max
+        max_tensor = t1.f.max_reduce(t1, dim_int)
+        # Step 2: Create mask tensor where input == max_tensor using zip with operators.eq
+        mask = t1.f.eq_zip(t1, max_tensor)
 
-        # Count number of maxima per slice
-        num_max = np.sum(mask, axis=dim_int, keepdims=True)
+        # Step 3: Count number of maxima along the dimension using reduce with operators.sum
+        num_max = mask.f.add_reduce(mask, dim_int)
 
-        # Save mask and num_max for backward
-        mask_tensor = Tensor.make(mask.flatten(), shape=t1.shape, backend=t1.backend)
-        num_max_tensor = Tensor.make(num_max.flatten(), shape=max_vals.shape, backend=t1.backend)
-        ctx.save_for_backward(mask_tensor, num_max_tensor, dim_int)
+        # Step 4: Save mask and num_max for backward pass
+        ctx.save_for_backward(mask, num_max, dim_int)
 
-        # Compute output max values
-        max_vals = np.squeeze(max_vals, axis = dim_int)
-        max_vals_tensor = Tensor.make(max_vals.flatten(), shape=tuple(max_vals.shape), backend=t1.backend)
-        return max_vals_tensor
+        return max_tensor
 
     @staticmethod
     def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
@@ -530,27 +525,64 @@ class Max(Function):
             Tuple[Tensor, None]: The gradient with respect to the input tensor and None for dim.
 
         """
-        mask_tensor, num_max_tensor, dim_int = ctx.saved_tensors
-        mask = mask_tensor.to_numpy()
-        num_max = num_max_tensor.to_numpy()
-        grad_output_array = grad_output.to_numpy()
+        mask, num_max, dim_int = ctx.saved_tensors
 
-        # Broadcast grad_output to match mask shape
-        grad_output_broadcast = np.expand_dims(grad_output_array, axis=dim_int)
-        # Assign gradient equally to all maxima
-        grad_input_array = mask * (grad_output_broadcast / num_max)
+        # Step 1: Compute inverse of num_max using map with operators.inv
+        inv_num_max = num_max.f.inv_map(num_max)
 
-        # Flatten grad_input_array for Tensor.make
-        grad_input_flat = grad_input_array.flatten()
+        # Step 2: Scale grad_output by inv_num_max using zip with operators.mul
+        grad_scaled = grad_output.f.mul_zip(grad_output, inv_num_max)
 
-        # Create a Tensor for grad_input
-        grad_input = Tensor.make(
-            grad_input_flat,
-            shape=tuple(grad_input_array.shape),
-            backend=grad_output.backend
-        )
+        # Step 3: Distribute scaled gradients only to positions where mask == 1 using zip with operators.mul
+        grad_input = mask.f.mul_zip(mask, grad_scaled)
         return grad_input, -1
     
+class LogSoftmax(Function):
+    @staticmethod
+    def forward(ctx: Context, input: Tensor, dim_tensor: Tensor) -> Tensor:
+        dim = int(dim_tensor.item())
+
+        # Step 1: Compute max along dim for numerical stability
+        max_tensor = input.f.max_reduce(input, dim)  # Shape: same as input with dim=1
+
+        # Step 2: Subtract max_tensor from input (broadcasted)
+        shifted = input - max_tensor  # Element-wise subtraction
+
+        # Step 3: Exponentiate the shifted tensor
+        exp_shifted = shifted.f.exp_map(shifted)  # Element-wise exponentiation
+
+        # Step 4: Sum of exponentials along dim
+        sum_exp = exp_shifted.sum(dim)  # Sum along dim
+
+        # Step 5: Log of sum_exp
+        log_sum_exp = sum_exp.f.log_map(sum_exp)  # Element-wise logarithm
+
+        # Step 6: Compute LogSoftmax by subtracting log_sum_exp from shifted
+        log_softmax = shifted - log_sum_exp  # Element-wise subtraction
+
+        # Step 7: Compute softmax = exp(log_softmax)
+        softmax = log_softmax.f.exp_map(log_softmax)  # Element-wise exponentiation
+
+        # Save softmax and dim for backward pass
+        ctx.save_for_backward(softmax, dim)
+
+        return log_softmax
+
+    @staticmethod
+    def backward(ctx: Context, grad_output: Tensor) -> Tuple[Tensor, int]:
+        softmax, dim_int = ctx.saved_tensors
+
+        # Step 1: Compute the sum of grad_output along dim
+        sum_grad = grad_output.sum(dim_int)  # Shape: same as sum_exp
+
+        # Step 2: Compute softmax_sum_grad = softmax * sum_grad
+        softmax_sum_grad = softmax.f.mul_zip(softmax, sum_grad)  # Element-wise multiplication
+
+        # Step 3: Compute grad_input = grad_output - softmax_sum_grad
+        grad_input = grad_output - softmax_sum_grad  # Element-wise subtraction
+
+        return grad_input, -1
+
 class EQ(Function):
     """Element-wise equality comparison."""
 
