@@ -1,8 +1,10 @@
-import numba # type: ignore
-import numpy as np # type: ignore
-from lib import CudaProblem, Coord # type: ignore
+import numba  # type: ignore
+import numpy as np  # type: ignore
+from lib import CudaProblem, Coord  # type: ignore
+from typing import Callable, Any
 
-def conv2d_spec(a, b):  # noqa: ANN001, ANN201, D103
+
+def conv2d_spec(a: np.ndarray, b: np.ndarray) -> np.ndarray:  # noqa: ANN001, ANN201, D103
     H, W = a.shape
     Kh, Kw = b.shape
     out = np.zeros_like(a, dtype=np.float32)
@@ -16,16 +18,20 @@ def conv2d_spec(a, b):  # noqa: ANN001, ANN201, D103
             out[i, j] = s
     return out
 
+
 # Parameters
 TPB = 4
-Kh, Kw = 3, 3   # Example kernel size
+Kh, Kw = 3, 3  # Example kernel size
 MAX_CONV_H = Kh - 1
 MAX_CONV_W = Kw - 1
 
 H_TPB = TPB + MAX_CONV_H
 W_TPB = TPB + MAX_CONV_W
 
-def conv2d_test(cuda):  # noqa: ANN001, ANN201, D103
+
+def conv2d_test(
+    cuda: Any,
+) -> Callable[[np.ndarray, np.ndarray, np.ndarray, int, int, int, int], None]:  # noqa: ANN001, ANN201, D103
     def call(out, a, b, H, W, Kh, Kw) -> None:  # noqa: ANN001
         # Shared memory size accommodates the tile plus the kernel extension
         a_shared = cuda.shared.array((H_TPB, W_TPB), numba.float32)
@@ -78,11 +84,9 @@ def conv2d_test(cuda):  # noqa: ANN001, ANN201, D103
 
 # Test 1: Small array and small kernel
 H, W = 6, 6
-a = np.arange(H*W, dtype=np.float32).reshape((H,W))
-b = np.array([[1,2,1],
-              [0,1,0],
-              [1,2,1]], dtype=np.float32)
-out = np.zeros((H,W), dtype=np.float32)
+a = np.arange(H * W, dtype=np.float32).reshape((H, W))
+b = np.array([[1, 2, 1], [0, 1, 0], [1, 2, 1]], dtype=np.float32)
+out = np.zeros((H, W), dtype=np.float32)
 
 problem = CudaProblem(
     "2D Conv (Simple)",
@@ -90,16 +94,16 @@ problem = CudaProblem(
     [a, b],
     out,
     [H, W, Kh, Kw],
-    blockspergrid=Coord(2,2),
-    threadsperblock=Coord(TPB,TPB),
-    spec=lambda a,b: conv2d_spec(a,b),
+    blockspergrid=Coord(2, 2),
+    threadsperblock=Coord(TPB, TPB),
+    spec=lambda a, b: conv2d_spec(a, b),
 )
 problem.check()
 
 # Test 2: Larger array and same kernel
 H2, W2 = 8, 8
-a2 = np.arange(H2*W2, dtype=np.float32).reshape((H2,W2))
-out2 = np.zeros((H2,W2), dtype=np.float32)
+a2 = np.arange(H2 * W2, dtype=np.float32).reshape((H2, W2))
+out2 = np.zeros((H2, W2), dtype=np.float32)
 
 problem = CudaProblem(
     "2D Conv (Full)",
@@ -107,16 +111,15 @@ problem = CudaProblem(
     [a2, b],
     out2,
     [H2, W2, Kh, Kw],
-    blockspergrid=Coord((H2+TPB-1)//TPB,(W2+TPB-1)//TPB),
-    threadsperblock=Coord(TPB,TPB),
-    spec=lambda a,b: conv2d_spec(a,b),
+    blockspergrid=Coord((H2 + TPB - 1) // TPB, (W2 + TPB - 1) // TPB),
+    threadsperblock=Coord(TPB, TPB),
+    spec=lambda a, b: conv2d_spec(a, b),
 )
 problem.check()
 
 
-
-#1d conv
-def conv_spec(a, b):   # noqa: ANN001, ANN201, D103
+# 1d conv
+def conv_spec(a: np.ndarray, b: np.ndarray) -> np.ndarray:  # noqa: ANN001, ANN201, D103
     out = np.zeros(*a.shape)
     len = b.shape[0]
     for i in range(a.shape[0]):
@@ -127,7 +130,11 @@ def conv_spec(a, b):   # noqa: ANN001, ANN201, D103
 MAX_CONV = 4
 TPB = 8
 TPB_MAX_CONV = TPB + MAX_CONV
-def conv_test(cuda):  # noqa: ANN001, ANN201, D103
+
+
+def conv_test(
+    cuda: Any,
+) -> Callable[[np.ndarray, np.ndarray, np.ndarray, int, int], None]:  # noqa: ANN001, ANN201, D103
     def call(out, a, b, a_size, b_size) -> None:  # noqa: ANN001
         i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
         local_i = cuda.threadIdx.x
@@ -143,7 +150,6 @@ def conv_test(cuda):  # noqa: ANN001, ANN201, D103
         # Load the tail part for convolution
         if local_i < b_size - 1 and (i + TPB) < a_size:
             shared[local_i + TPB] = a[i + TPB]
-        
 
         cuda.syncthreads()
 
@@ -196,4 +202,3 @@ problem = CudaProblem(
 
 problem.show()
 problem.check()
-

@@ -112,7 +112,7 @@ def matmul_tensors(
     l2 = (j, k)
     values = []
     for shape in [l1, l2]:
-        size = int(minitorch.prod(shape))
+        size = int(minitorch.prod(shape))  # type: ignore
         data = draw(lists(numbers, min_size=size, max_size=size))
         values.append(minitorch.Tensor(minitorch.TensorData(data, shape)))
     return values
