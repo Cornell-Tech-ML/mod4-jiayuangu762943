@@ -2,7 +2,7 @@ from typing import Optional, Tuple
 from .tensor import Tensor
 from .tensor_functions import Function
 from .autodiff import Context
-import numpy as np # type: ignore
+import numpy as np  # type: ignore
 # List of functions in this file:
 # - avgpool2d: Tiled average pooling 2D
 # - argmax: Compute the argmax as a 1-hot tensor
@@ -156,7 +156,7 @@ class Max(Function):
 
         # Compute max values and indices
         max_vals = np.max(input_array, axis=dim_int, keepdims=True)
-        mask = (input_array == max_vals).astype(np.sfloat64)
+        mask = (input_array == max_vals).astype(np.float64)
 
         # Count number of maxima per slice
         num_max = np.sum(mask, axis=dim_int, keepdims=True)
