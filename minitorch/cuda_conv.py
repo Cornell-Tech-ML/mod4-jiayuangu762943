@@ -29,10 +29,31 @@ H_TPB = TPB + MAX_CONV_H
 W_TPB = TPB + MAX_CONV_W
 
 
-def conv2d_test(
+def conv2d_test(  # noqa: D103
     cuda: Any,
 ) -> Callable[[np.ndarray, np.ndarray, np.ndarray, int, int, int, int], None]:  # noqa: ANN001, ANN201, D103
-    def call(out, a, b, H, W, Kh, Kw) -> None:  # noqa: ANN001
+    """Generates a callable function for performing 2D convolution using CUDA.
+
+    Args:
+        cuda (Any): The CUDA runtime object (e.g., from Numba).
+
+    Returns:
+        Callable: A CUDA kernel function for 2D convolution.
+
+    """
+    def call(out: np.ndarray, a: np.ndarray, b: np.ndarray, H: int, W: int, Kh: int, Kw: int) -> None:
+        """CUDA kernel for 2D convolution.
+
+        Args:
+            out (np.ndarray): Output array for the result of the convolution.
+            a (np.ndarray): Input array to be convolved.
+            b (np.ndarray): Kernel array.
+            H (int): Height of the input array.
+            W (int): Width of the input array.
+            Kh (int): Height of the kernel.
+            Kw (int): Width of the kernel.
+
+        """
         # Shared memory size accommodates the tile plus the kernel extension
         a_shared = cuda.shared.array((H_TPB, W_TPB), numba.float32)
 
@@ -135,6 +156,15 @@ TPB_MAX_CONV = TPB + MAX_CONV
 def conv_test(
     cuda: Any,
 ) -> Callable[[np.ndarray, np.ndarray, np.ndarray, int, int], None]:  # noqa: ANN001, ANN201, D103
+    """Generates a callable function for performing 1D convolution using CUDA.
+
+    Args:
+        cuda (Any): The CUDA runtime object (e.g., from Numba).
+
+    Returns:
+        Callable: A CUDA kernel function for 1D convolution.
+
+    """
     def call(out, a, b, a_size, b_size) -> None:  # noqa: ANN001
         i = cuda.blockIdx.x * cuda.blockDim.x + cuda.threadIdx.x
         local_i = cuda.threadIdx.x
